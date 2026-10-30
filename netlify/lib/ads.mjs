@@ -28,7 +28,11 @@ export class AdsError extends Error {
 // It is only sent if you still have one set (Google has said future versions will reject it, so leave it empty).
 export const DEFAULT_VERSION = 'v25';
 
-export function envConfig(env = process.env) {
+// Pasted values often carry spaces, line breaks or quote marks. Strip them.
+const clean = (v) => String(v == null ? '' : v).trim().replace(/^["']+|["']+$/g, '').trim();
+
+export function envConfig(input = process.env) {
+  const env = Object.fromEntries(Object.keys(input).filter((k) => k.startsWith('GOOGLE_ADS_')).map((k) => [k, clean(input[k])]));
   const need = ['GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET', 'GOOGLE_ADS_REFRESH_TOKEN', 'GOOGLE_ADS_LOGIN_CUSTOMER_ID'];
   const missing = need.filter((k) => !env[k]);
   if (missing.length) throw new AdsError('Missing settings: ' + missing.join(', '), 500);
@@ -65,14 +69,23 @@ export async function getAccessToken(env = process.env, fetchFn = fetch) {
     signal: AbortSignal.timeout(8000),
   });
   const j = await res.json().catch(() => ({}));
-  if (!res.ok || !j.access_token) throw new AdsError('Google sign-in failed (' + (j.error || res.status) + '). The refresh token may need to be re-created.', 502, j);
+  if (!res.ok || !j.access_token) {
+    const why = j.error === 'invalid_client' ? 'Google rejected the client ID or client secret. Re-paste both with no spaces or quote marks, and check they belong to the same OAuth client.'
+      : j.error === 'invalid_grant' ? 'Google rejected the refresh token. It may have expired or been made with a different OAuth client, so create a new one.'
+      : 'Check the Google settings in Netlify.';
+    throw new AdsError('Google sign-in failed (' + (j.error || res.status) + '). ' + why, 502, j);
+  }
   tokenCache = { value: j.access_token, exp: Date.now() + (j.expires_in || 3600) * 1000 };
   return tokenCache.value;
 }
 export function resetTokenCache() { tokenCache = { value: null, exp: 0 }; }
 
 // One GAQL query -> flat array of result rows (camelCase JSON as the REST API returns it).
-export async function runQuery(customerId, query, { env = process.env, fetchFn = fetch, timeoutMs = 9000 } = {}) {
+// Fields that are nice to have. If a newer API version drops or renames one, the query is retried without it.
+const OPTIONAL_FIELDS = ['metrics.video_views'];
+const dropField = (q, f) => q.replace(new RegExp(',\\s*' + f.replace(/\./g, '\\.')), '');
+
+export async function runQuery(customerId, query, { env = process.env, fetchFn = fetch, timeoutMs = 9000, retried = false } = {}) {
   const c = envConfig(env);
   const token = await getAccessToken(env, fetchFn);
   const url = `https://googleads.googleapis.com/${c.version}/customers/${digits(customerId)}/googleAds:searchStream`;
@@ -98,6 +111,8 @@ export async function runQuery(customerId, query, { env = process.env, fetchFn =
           const x = Array.isArray(e) ? e[0] : e;
           msg += ': ' + (x?.error?.details?.[0]?.errors?.[0]?.message || x?.error?.message || '');
         } catch { /* ignore */ }
+        const bad = res.status === 400 && !retried ? (text.match(/Unrecognized field in the query: '([^']+)'/) || [])[1] : null;
+        if (bad && OPTIONAL_FIELDS.includes(bad)) return runQuery(customerId, dropField(query, bad), { env, fetchFn, timeoutMs, retried: true });
         const hint = explainError(res.status, text);
         if (hint) msg += ' ' + hint;
         const err = new AdsError(msg, res.status, text.slice(0, 500));
