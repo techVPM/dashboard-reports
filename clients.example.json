@@ -1,0 +1,23 @@
+[
+  {
+    "token": "make-a-long-random-string-for-each-client",
+    "name": "Client Name",
+    "customer_id": "123-456-7890",
+    "timezone": "America/Denver",
+    "currency": "USD",
+    "outcomes": {
+      "leads": ["Lead form submit"],
+      "calls": ["Booked Call"],
+      "deals": ["Purchase"]
+    },
+    "deal_value": 0,
+    "conversion_field": "conversions",
+    "labels": { "leads": "Leads", "calls": "Booked calls", "deals": "Sales" },
+    "targets": { "cpl": 35, "cpc": 140, "roas": 3, "breakeven": 2 },
+    "notes": [ { "title": "A note from your VPM team", "body": "Anything you want the client to read at the top of Insights." } ],
+    "actions": [ { "title": "Example action", "body": "What we are doing next and why.", "priority": "High" } ],
+    "term_groups": { "Brand": "client name|brand term" },
+    "last_change_date": "2026-10-14",
+    "disabled": false
+  }
+]

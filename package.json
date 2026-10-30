@@ -1,0 +1,15 @@
+{
+  "name": "vpm-live-reports",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/ads.test.mjs",
+    "add-client": "node scripts/add-client.mjs"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  },
+  "engines": { "node": ">=20" }
+}

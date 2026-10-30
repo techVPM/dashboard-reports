@@ -1,0 +1,18 @@
+[
+  {
+    "token": "eUqBcXY_ujN2tN3yD0awf1a6Z18HXRTh",
+    "name": "Coach by Chris",
+    "customer_id": "683-045-1613",
+    "timezone": "America/New_York",
+    "outcomes": { "calls": ["Booked Call"] },
+    "labels": { "calls": "Booked calls" },
+    "targets": { "cpc": null },
+    "notes": [],
+    "actions": [],
+    "term_groups": {
+      "Brand and brand-adjacent": "chris|shatek|coach by chris|freedom from alcohol",
+      "AA and 12-step seekers": "\\baa\\b|anonymous|12 step|twelve step|sponsor",
+      "Treatment, hotline and rehab": "hotline|helpline|rehab|detox|treatment|outpatient"
+    }
+  }
+]
