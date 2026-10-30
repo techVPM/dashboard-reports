@@ -66,11 +66,12 @@ function load() {
   var qs = rangeQS(), my = ++loadSeq;
   if (CACHE[qs]) { apply(CACHE[qs]); return; }
   setBusy(true); drawRangeBar();
-  fetch(API + (API.indexOf('?') > -1 ? '&' : '?') + 'k=' + encodeURIComponent(KEY) + '&' + qs, { cache: 'no-store' })
+  var dbg = ''; try { var sp = new URLSearchParams(location.search); if (sp.get('fresh') === '1' && sp.get('s')) dbg = '&fresh=1&s=' + encodeURIComponent(sp.get('s')); } catch (e) { /* ignore */ }
+  fetch(API + (API.indexOf('?') > -1 ? '&' : '?') + 'k=' + encodeURIComponent(KEY) + '&' + qs + dbg, { cache: 'no-store' })
     .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
     .then(function (x) {
       if (my !== loadSeq) return;
-      if (!x.ok || x.j.error) { fail((x.j && x.j.error) || 'The report data could not be loaded. Try again in a few minutes.'); return; }
+      if (!x.ok || x.j.error) { fail(((x.j && x.j.error) || 'The report data could not be loaded. Try again in a few minutes.') + (x.j && x.j.reason ? ' Details: ' + x.j.reason : '')); return; }
       CACHE[qs] = x.j; apply(x.j);
     })
     .catch(function (err) { if (my !== loadSeq) return; try { console.error(err); } catch (e) { /* ignore */ } fail('The report data could not be loaded. Try again in a few minutes. If it keeps happening, contact Video Power Marketing.'); });
