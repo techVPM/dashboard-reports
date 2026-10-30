@@ -31,5 +31,7 @@ export function loadClients(env = process.env) {
 
 export function findClient(token, env = process.env) {
   if (!token || !/^[A-Za-z0-9_-]{4,200}$/.test(token)) return null;
-  return loadClients(env).find((c) => c.token === token && !c.disabled) || null;
+  // Readable keys (all lowercase, like coach-by-chris-1613) match without regard to capital letters.
+  const lower = token.toLowerCase();
+  return loadClients(env).find((c) => !c.disabled && c.token && (c.token === token || (c.token === c.token.toLowerCase() && c.token === lower))) || null;
 }

@@ -71,10 +71,10 @@ function build(P) {
   ITEMS = {};
   var byId = {}; C.forEach(function (c) { byId[c.id] = c; });
   Object.keys(P.items || {}).forEach(function (kind) {
-    ITEMS[kind] = (P.items[kind] || []).map(function (r) {
+    ITEMS[kind] = (P.items[kind] || []).map(function (r, idx) {
       var o = { cid: String(r.campaign_id || ''), camp: (byId[String(r.campaign_id)] || {}).name || '', name: r.name || '', detail: r.detail || '' };
       Object.keys(map).forEach(function (k) { o[map[k]] = +r[k] || 0; });
-      if (kind === 'videos') { o.dur = r.detail; o.hue = hue(o.name); }
+      if (kind === 'videos') { o.dur = r.detail; o.hue = hue(o.name); o.vid = String(r.video_id || ''); o.i = idx; }
       if (kind === 'ads') { o.h1 = o.name; o.h2 = o.detail; }
       return o;
     });

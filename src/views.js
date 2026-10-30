@@ -1,5 +1,5 @@
 /* ===== views ===== */
-var S = { view: 'overview', cid: null, type: 'all', scn: 0, met: { o: null, t: null, cd: null }, range: { mode: '30', from: '', to: '' }, sort: { keywords: ['spend', -1], terms: ['spend', -1], 'keywords-d': ['spend', -1], 'terms-d': ['spend', -1], themes: ['spend', -1], landing: ['spend', -1] } };
+var S = { view: 'overview', cid: null, type: 'all', scn: 0, met: { o: null, t: null, cd: null }, range: { mode: '30', from: '', to: '' }, page: {}, sort: { keywords: ['spend', -1], terms: ['spend', -1], 'keywords-d': ['spend', -1], 'terms-d': ['spend', -1], themes: ['spend', -1], landing: ['spend', -1] } };
 var VIEWS = {
   overview: ['Overview', 'How ad spend turns into results'],
   weekly: ['Week by week', 'Every key number, one week at a time'],
@@ -85,16 +85,20 @@ function paintCharts() { charts.forEach(function (c) { drawChart(document.getEle
 
 /* ---------- tables ---------- */
 function vOf(c, r) { return c.v(r); }
-function tbl(id, cols, rows, rowAttr) {
+var PAGE = 15;
+function tbl(id, cols, rows, rowAttr, pageSize) {
   var st = S.sort[id] || ['verdict', -1];
   var c = cols.filter(function (x) { return x.k === st[0]; })[0];
   if (!c) { st = ['spend', -1]; c = cols.filter(function (x) { return x.k === 'spend'; })[0]; }
   if (c) rows = rows.slice().sort(function (a, b) { var x = vOf(c, a), y = vOf(c, b); if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (x > y ? 1 : x < y ? -1 : 0) * st[1]; });
+  var total = rows.length, pg = 0, pages = 1;
+  if (pageSize && total > pageSize) { pages = Math.ceil(total / pageSize); pg = Math.min(S.page[id] || 0, pages - 1); S.page[id] = pg; rows = rows.slice(pg * pageSize, (pg + 1) * pageSize); }
+  var pager = pages > 1 ? '<div class="pager"><span>Showing ' + (pg * pageSize + 1) + ' to ' + (pg * pageSize + rows.length) + ' of ' + total + '</span><div><button type="button" data-page="' + id + ':-1"' + (pg === 0 ? ' disabled' : '') + '>&lsaquo; Previous</button><span class="pn">Page ' + (pg + 1) + ' of ' + pages + '</span><button type="button" data-page="' + id + ':1"' + (pg >= pages - 1 ? ' disabled' : '') + '>Next &rsaquo;</button></div></div>' : '';
   return '<div class="tw"><table class="t"><thead><tr>' + cols.map(function (c2) {
     var on = st[0] === c2.k; return '<th class="' + (c2.n ? 'n' : '') + '" aria-sort="' + (on ? (st[1] > 0 ? 'ascending' : 'descending') : 'none') + '"><button data-sort="' + id + ':' + c2.k + '">' + c2.l + (on ? (st[1] > 0 ? ' ▲' : ' ▼') : '') + '</button></th>';
   }).join('') + '</tr></thead><tbody>' + rows.map(function (r) {
     return '<tr' + (rowAttr ? rowAttr(r) : '') + '>' + cols.map(function (c2) { return '<td class="' + (c2.n ? 'n ' : '') + (c2.nm ? 'nm ' : '') + (c2.c ? c2.c(r) : '') + '">' + c2.f(r) + '</td>'; }).join('') + '</tr>';
-  }).join('') + '</tbody></table></div>';
+  }).join('') + '</tbody></table></div>' + pager;
 }
 function col(k, l, f, v, opts) { return Object.assign({ k: k, l: l, n: 1, v: v, f: f }, opts || {}); }
 function outCols() {
@@ -135,9 +139,12 @@ function audTable(rows, showCamp) {
   if (showCamp) cols.push({ k: 'camp', l: 'Campaign', v: function (r) { return r.camp; }, f: function (r) { return esc(r.camp); } });
   return tbl('audiences', cols.concat(outCols(), verdictCol('item', thrItem())), rows);
 }
-function thumb(r) { return '<div class="thumb"><div class="th" style="background:linear-gradient(135deg,hsl(' + r.hue + ' 45% 32%),hsl(' + ((r.hue + 40) % 360) + ' 50% 20%))"><svg viewBox="0 0 16 16"><path d="M5 3l8 5-8 5z"/></svg>' + (r.dur ? '<em>' + esc(r.dur) + '</em>' : '') + '</div><div><b>' + esc(r.name) + '</b></div></div>'; }
+function thumb(r) {
+  var img = r.vid && /^[A-Za-z0-9_-]{5,20}$/.test(r.vid) ? 'url(https://i.ytimg.com/vi/' + r.vid + '/mqdefault.jpg) center/cover no-repeat,' : '';
+  return '<button type="button" class="thumb" data-vi="' + r.i + '" aria-label="Watch video: ' + esc(r.name) + '"><span class="th" style="background:' + img + 'linear-gradient(135deg,hsl(' + r.hue + ' 45% 32%),hsl(' + ((r.hue + 40) % 360) + ' 50% 20%))"><svg viewBox="0 0 16 16"><path d="M5 3l8 5-8 5z"/></svg>' + (r.dur ? '<em>' + esc(r.dur) + '</em>' : '') + '</span><span class="tt"><b>' + esc(r.name) + '</b><small>Watch video</small></span></button>';
+}
 function vidTable(rows, showCamp) {
-  var cols = [{ k: 'name', l: 'Video', nm: 1, v: function (r) { return r.name; }, f: thumb }];
+  var cols = [{ k: 'name', l: 'Video', nm: 1, c: function () { return 'vid'; }, v: function (r) { return r.name; }, f: thumb }];
   if (showCamp) cols.push({ k: 'camp', l: 'Campaign', v: function (r) { return r.camp; }, f: function (r) { return esc(r.camp); } });
   cols.push(col('views', 'Views', function (r) { return int(r.views); }, function (r) { return r.views; }),
     col('vr', 'View rate', function (r) { return r.impr ? pct(r.views / r.impr) : NA(); }, function (r) { return r.impr ? r.views / r.impr : null; }),
@@ -149,12 +156,11 @@ function adTable(rows, showCamp) {
   if (showCamp) cols.push({ k: 'camp', l: 'Campaign', v: function (r) { return r.camp; }, f: function (r) { return esc(r.camp); } });
   return tbl('ads', cols.concat(outCols(), trafficCols(), verdictCol('item', thrItem())), rows);
 }
-function termTable(id, label, rows, limit) {
+function termTable(id, label, rows) {
   var cols = [{ k: 'name', l: label, nm: 1, v: function (r) { return r.name; }, f: function (r) { return '<b>' + esc(r.name) + '</b>' + (r.detail ? '<br><span class="tag">' + esc(r.detail) + '</span>' : ''); } }];
   cols.push({ k: 'camp', l: 'Campaign', v: function (r) { return r.camp; }, f: function (r) { return esc(r.camp); } });
   var st = S.sort[id] || ['spend', -1];
-  var out = tbl(id, cols.concat(outCols(), trafficCols(), verdictCol('item', thrItem())), rows);
-  return out + (rows.length > limit ? '<p class="note">Showing all ' + rows.length + ' rows.</p>' : '');
+  return tbl(id, cols.concat(outCols(), trafficCols(), verdictCol('item', thrItem())), rows, null, PAGE);
 }
 
 /* ---------- panels ---------- */
@@ -308,31 +314,41 @@ function vVideos() {
 function vAds() {
   var ads = items('ads'), kw = items('keywords'), tm = items('terms'), out = '';
   out += panel('Ads', 'Selected range', ads.length ? adTable(ads, true) : '<p class="msg">No ads in this view.</p>');
-  if (kw.length) out += panel('Keywords', 'Top keywords by spend', termTable('keywords', 'Keyword', kw, 100));
-  if (tm.length) {
-    out += panel('Search terms', 'The searches that triggered your ads, highest spend first. Google hides low-volume terms, so this is only part of Search spend.', termTable('terms', 'Search term', tm, 300));
-    if (TERMG.length) {
-      var gs = TERMG.map(function (g) { return { name: g[0], re: g[1], detail: '', camp: '', cid: '', spend: 0, impr: 0, clicks: 0, views: 0, conv: 0, leads: 0, calls: 0, deals: 0, rev: 0 }; }), oth = { name: 'Everything else', detail: '', camp: '', cid: '', spend: 0, impr: 0, clicks: 0, views: 0, conv: 0, leads: 0, calls: 0, deals: 0, rev: 0 };
-      tm.forEach(function (t) { var g = gs.filter(function (x) { return x.re.test(t.name); })[0] || oth; KEYS.forEach(function (k) { g[k] += t[k]; }); });
-      var gr = gs.concat([oth]).filter(function (g) { return g.spend > 0; });
-      var cols = [{ k: 'name', l: 'Search theme', nm: 1, v: function (r) { return r.name; }, f: function (r) { return '<b>' + esc(r.name) + '</b>'; } }].concat(outCols(), trafficCols());
-      out += panel('Search terms by theme', 'Groups of related searches from the terms above', tbl('themes', cols, gr));
-    }
+  // Summaries first (themes, landing pages), then the long lists, 15 rows at a time.
+  if (tm.length && TERMG.length) {
+    var gs = TERMG.map(function (g) { return { name: g[0], re: g[1], detail: '', camp: '', cid: '', spend: 0, impr: 0, clicks: 0, views: 0, conv: 0, leads: 0, calls: 0, deals: 0, rev: 0 }; }), oth = { name: 'Everything else', detail: '', camp: '', cid: '', spend: 0, impr: 0, clicks: 0, views: 0, conv: 0, leads: 0, calls: 0, deals: 0, rev: 0 };
+    tm.forEach(function (t) { var g = gs.filter(function (x) { return x.re.test(t.name); })[0] || oth; KEYS.forEach(function (k) { g[k] += t[k]; }); });
+    var gr = gs.concat([oth]).filter(function (g) { return g.spend > 0; });
+    var cols = [{ k: 'name', l: 'Search theme', nm: 1, v: function (r) { return r.name; }, f: function (r) { return '<b>' + esc(r.name) + '</b>'; } }].concat(outCols(), trafficCols());
+    out += panel('Search terms by theme', 'Groups of related searches from the search terms below', tbl('themes', cols, gr));
   }
   var lp = groupBy('landing', ids());
   if (lp.length) {
     var lcols = [{ k: 'name', l: 'Landing page', nm: 1, v: function (r) { return r.name; }, f: function (r) { return '<b>' + esc(r.name) + '</b>'; } }].concat(outCols(), trafficCols());
     out += panel('Landing pages', 'Where clicks land', tbl('landing', lcols, lp));
   }
+  if (kw.length) out += panel('Keywords', 'Top keywords by spend', termTable('keywords', 'Keyword', kw));
+  if (tm.length) out += panel('Search terms', 'The searches that triggered your ads, highest spend first. Google hides low-volume terms, so this is only part of Search spend.', termTable('terms', 'Search term', tm));
   return out;
 }
+var GROUPS = [
+  ['perf', 'Performance and trends', 'How results are moving'],
+  ['camp', 'Campaigns and budget', 'Where the money works hardest'],
+  ['search', 'Searches and keywords', 'What people type and what it costs'],
+  ['aud', 'Who responds best', 'Age, gender and device']
+];
 function vInsights() {
   var D = computeInsights(), out = '';
+  out += panel('Wins', 'Good news in the selected range', D.wins.length ? '<div class="inslist wins">' + D.wins.map(function (w) { return '<article class="ins good win"><h3>' + esc(w.title) + '</h3><p>' + esc(w.body) + '</p></article>'; }).join('') + '</div>' : '<p class="msg">No standout wins in this range yet. See the recommended actions below.</p>');
   if (D.team.length) out += panel('From your Video Power Marketing team', '', '<div class="inslist">' + D.team.map(function (n) { return insightCard({ tone: 'team', title: n.title, body: n.body }); }).join('') + '</div>');
-  out += panel('What the data means', 'Written automatically from the numbers in the selected range', '<div class="inslist">' + D.insights.map(insightCard).join('') + '</div>');
   out += panel('Recommended actions', 'In priority order. Each one is meant to lower cost per ' + sing(rlab()) + ' or add volume without wasting spend.',
     '<ol class="steps big">' + D.actions.map(function (a, i) { return '<li><span class="n">' + (i + 1) + '</span><div><div class="t">' + esc(a.title) + ' <span class="pill ' + ({ High: 'bad', Medium: 'warn', Low: 'early' }[a.priority] || 'early') + '">' + esc(a.priority) + '</span></div><div class="d">' + esc(a.body) + '</div></div></li>'; }).join('') + '</ol>');
-  out += panel('Also worth knowing', '', '<div class="inslist">' + D.notes.map(function (n) { return insightCard({ tone: 'neutral', title: n.title, body: n.body }); }).join('') + '</div>');
+  var gp = GROUPS.map(function (g) {
+    var rows = D.insights.filter(function (i) { return (i.g || 'perf') === g[0]; });
+    return rows.length ? panel(g[1], g[2], '<div class="inslist">' + rows.map(insightCard).join('') + '</div>') : '';
+  }).filter(Boolean);
+  if (gp.length) out += '<div class="masonry">' + gp.join('') + '</div>';
+  if (D.notes.length) out += '<details class="panel fold"><summary>Also worth knowing <span>(' + D.notes.length + ')</span></summary><div class="inslist">' + D.notes.map(function (n) { return insightCard({ tone: 'neutral', title: n.title, body: n.body }); }).join('') + '</div></details>';
   return out;
 }
 function vDetail() {
@@ -346,7 +362,7 @@ function vDetail() {
   if (au.length) out += panel('Audiences', 'Who this campaign reached', audTable(au, false));
   if (vi.length) out += panel('Videos', 'Creative inside this campaign', vidTable(vi, false));
   if (ad.length) out += panel('Ads', 'Ads inside this campaign', adTable(ad, false));
-  if (kw.length) out += panel('Keywords', 'Top keywords by spend', termTable('keywords-d', 'Keyword', kw, 100));
-  if (tm.length) out += panel('Search terms', 'Highest-spend searches', termTable('terms-d', 'Search term', tm, 300));
+  if (kw.length) out += panel('Keywords', 'Top keywords by spend', termTable('keywords-d', 'Keyword', kw));
+  if (tm.length) out += panel('Search terms', 'Highest-spend searches', termTable('terms-d', 'Search term', tm));
   return out;
 }

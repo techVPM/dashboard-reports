@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildReport, resetTokenCache, makeClassifier, baseQuery, splitQuery, ITEM_SPECS, envConfig, explainError, DEFAULT_VERSION } from '../netlify/lib/ads.mjs';
+import { buildReport, resetTokenCache, makeClassifier, baseQuery, splitQuery, ITEM_SPECS, runQuery, envConfig, explainError, DEFAULT_VERSION } from '../netlify/lib/ads.mjs';
 import { resolveRange, cacheKey } from '../netlify/lib/range.mjs';
 import { demoReport } from '../netlify/lib/demo.mjs';
+import { findClient, loadClients } from '../netlify/lib/store.mjs';
 
 const ENV = { GOOGLE_ADS_CLIENT_ID: 'id', GOOGLE_ADS_CLIENT_SECRET: 'sec', GOOGLE_ADS_REFRESH_TOKEN: 'rt', GOOGLE_ADS_LOGIN_CUSTOMER_ID: '550-628-3927' };
 const CLIENT = { name: 'Test Co', customer_id: '683-045-1613', timezone: 'America/New_York', outcomes: { calls: ['Booked Call'] } };
@@ -154,4 +155,35 @@ test('Cloud project errors get a plain-language hint', () => {
   assert.match(explainError(403, 'AUTHORIZATION_ERROR'), /Cloud Console/);
   assert.match(explainError(429, ''), /limit/);
   assert.equal(explainError(400, 'something else'), '');
+});
+
+test('a query still works when the API version no longer has metrics.video_views', async () => {
+  resetTokenCache();
+  const sent = [];
+  const f = async (url, init) => {
+    if (url.includes('oauth2.googleapis.com')) return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), { status: 200 });
+    const q = JSON.parse(init.body).query;
+    sent.push(q);
+    if (q.includes('metrics.video_views')) return new Response(JSON.stringify({ error: { message: "Unrecognized field in the query: 'metrics.video_views'." } }), { status: 400 });
+    return new Response(JSON.stringify([{ results: [{ campaign: { id: '1' } }] }]), { status: 200 });
+  };
+  const rows = await runQuery('6830451613', 'SELECT campaign.id, metrics.clicks, metrics.video_views, metrics.conversions FROM campaign', { env: ENV, fetchFn: f });
+  assert.equal(rows.length, 1);
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1], 'SELECT campaign.id, metrics.clicks, metrics.conversions FROM campaign');
+  // other bad fields still fail loudly
+  await assert.rejects(runQuery('1', 'SELECT metrics.nope FROM campaign', { env: ENV, fetchFn: async (u) => u.includes('oauth2') ? new Response(JSON.stringify({ access_token: 't', expires_in: 3600 })) : new Response(JSON.stringify({ error: { message: "Unrecognized field in the query: 'metrics.nope'." } }), { status: 400 }) }));
+});
+
+test('client link keys are readable, unique and match each account', () => {
+  const all = loadClients({});
+  assert.ok(all.length >= 8);
+  assert.equal(new Set(all.map((c) => c.token)).size, all.length);
+  for (const c of all) {
+    assert.match(c.token, /^[a-z0-9]+(-[a-z0-9]+)*-\d{4}$/);
+    assert.ok(c.token.endsWith(c.customer_id.replace(/\D/g, '').slice(-4)), c.name);
+    assert.equal(findClient(c.token, {}).name, c.name);
+  }
+  assert.equal(findClient('Coach-By-Chris-1613', {}).name, 'Coach by Chris');   // capitals do not matter
+  assert.equal(findClient('coach-by-chris-9999', {}), null);
 });

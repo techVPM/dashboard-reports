@@ -162,3 +162,79 @@
 @media (max-width:900px){.vpm .rangebar{margin-top:0}}
 .vpm .ctl{justify-content:flex-end}
 .vpm .ins.good,.vpm .ins.bad,.vpm .ins.warn{color:var(--fg);font-weight:400}
+/* ---- roomier layout ---- */
+.vpm .app{gap:28px}
+.vpm main{gap:28px}
+.vpm .kpis{gap:18px}
+.vpm .kpi{padding:18px 18px 14px;border-radius:14px}
+.vpm .kpis.sm{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.vpm .panel{padding:26px;border-radius:16px}
+.vpm .ph{margin-bottom:20px;gap:10px 20px}
+.vpm .two{gap:28px}
+.vpm .two.top-aligned{align-items:start}
+.vpm .t td{padding:13px 12px}
+.vpm .t th button{padding:10px 12px}
+.vpm .inslist{gap:16px}
+.vpm .ins{padding:16px 18px;border-radius:12px}
+.vpm .ins h3{margin-bottom:6px}
+.vpm .group{margin-bottom:16px}
+.vpm .gr{padding:13px 14px}
+.vpm .steps{gap:8px}
+.vpm .steps li{padding:12px 8px}
+.vpm .clock{margin-top:18px;padding:16px}
+.vpm .back{margin-bottom:8px}
+.vpm .sample{margin-bottom:0}
+.vpm .bars{gap:14px}
+/* ---- header: campaign filter on top, dates below it with their details ---- */
+.vpm .top{align-items:flex-start;gap:16px 28px}
+.vpm .ctl{flex-direction:column;align-items:flex-end;gap:12px}
+.vpm .datebox{display:flex;flex-direction:column;align-items:flex-end;gap:10px;max-width:100%}
+.vpm .rangebar{margin-top:0;justify-content:flex-end;gap:10px}
+.vpm .custom{justify-content:flex-end}
+@media (max-width:900px){.vpm .ctl,.vpm .datebox{align-items:flex-start}.vpm .rangebar,.vpm .custom{justify-content:flex-start}.vpm .panel{padding:20px}.vpm .app,.vpm main{gap:20px}}
+/* ---- video thumbnails and popup ---- */
+.vpm .thumb{display:flex;gap:14px;align-items:center;background:none;border:0;padding:0;text-align:left;cursor:pointer;border-radius:8px;width:100%}
+.vpm .thumb .tt{display:flex;flex-direction:column;min-width:0}
+.vpm .thumb .tt small{color:var(--c1);font-weight:700;font-size:12.5px;text-decoration:underline;margin-top:2px}
+.vpm .thumb:hover .th{filter:brightness(1.12)}
+.vpm .thumb:hover .tt b{text-decoration:underline}
+.vpm .th{width:92px;height:52px}
+.vpm .th svg{width:22px;height:22px;position:relative;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+.vpm .modal{position:fixed;inset:0;z-index:50;background:rgba(10,12,14,.72);display:flex;align-items:center;justify-content:center;padding:20px}
+.vpm .modal[hidden]{display:none}
+.vpm .mbox{background:var(--panel);color:var(--fg);border-radius:16px;padding:22px;width:min(860px,100%);max-height:100%;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.vpm .mhead{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:16px}
+.vpm .mhead h2{font-family:var(--font-head);font-size:21px;letter-spacing:.01em}
+.vpm .mhead p{margin:4px 0 0;color:var(--muted);font-size:14px}
+.vpm .mclose{flex:none;width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--soft);font-size:24px;line-height:1;cursor:pointer}
+.vpm .mclose:hover{background:var(--line)}
+.vpm .mvideo{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden}
+.vpm .mvideo iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.vpm .mnone{position:absolute;inset:0;display:grid;place-items:center;color:#cfd6d9;text-align:center;padding:20px}
+.vpm .mlink{margin:12px 0 0;font-size:14px;color:var(--muted)}
+.vpm .mlink a{color:var(--c1);font-weight:700}
+/* ---- paging ---- */
+.vpm .pager{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px 16px;margin-top:16px;color:var(--muted);font-size:14px}
+.vpm .pager>div{display:flex;align-items:center;gap:12px}
+.vpm .pager button{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;color:var(--fg)}
+.vpm .pager button:hover:not([disabled]){background:var(--soft)}
+.vpm .pager button[disabled]{opacity:.4;cursor:default}
+.vpm .pager .pn{font-weight:600}
+/* ---- insights ---- */
+.vpm .ins.win{background:var(--good-bg);border-color:transparent;border-left:4px solid var(--good)}
+.vpm .ins.win h3{color:var(--good)}
+.vpm .fold{padding:0}
+.vpm .fold summary{cursor:pointer;list-style:none;padding:20px 26px;font-family:var(--font-head);font-size:19px;letter-spacing:.01em;display:flex;gap:8px;align-items:center}
+.vpm .fold summary::-webkit-details-marker{display:none}
+.vpm .fold summary::before{content:'\25B8';font-size:14px;color:var(--muted);transition:transform .15s}
+.vpm .fold[open] summary::before{transform:rotate(90deg)}
+.vpm .fold summary span{color:var(--muted);font-size:15px;font-family:var(--font-body)}
+.vpm .fold .inslist{padding:0 26px 26px}
+.vpm .rangebar.stack{flex-direction:column;align-items:flex-end;gap:10px}
+@media (max-width:900px){.vpm .rangebar.stack{align-items:flex-start}}
+.vpm .masonry{columns:2;column-gap:28px}
+.vpm .masonry .panel{break-inside:avoid;margin-bottom:28px;display:block}
+.vpm .masonry .panel:last-child{margin-bottom:0}
+@media (max-width:900px){.vpm .masonry{columns:1}}
+.vpm .t td.vid{min-width:320px}
+.vpm .thumb .tt small{white-space:nowrap}

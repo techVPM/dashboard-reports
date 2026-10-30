@@ -35,7 +35,7 @@ function computeInsights() {
       body = 'Compared with the previous ' + N + ' days, spend is ' + chgWord(cur.spend, pri.spend) + ', ' + UP + ' are ' + chgWord(R, PR) + ' and cost per ' + U + ' is ' + chgWord(cpr || 0, pcpr || 0) + '.';
     } else body = 'There is no earlier period to compare with yet.';
     if (HAS.rev && cur.spend) body += ' Revenue of ' + money(cur.rev) + ' on ' + money(cur.spend) + ' of spend is a ' + xf(cur.rev / cur.spend) + ' return.';
-    ins.push({ title: title, body: body, tone: tone });
+    ins.push({ g: 'perf', title: title, body: body, tone: tone });
   })();
 
   /* 2. momentum across full weeks */
@@ -49,7 +49,7 @@ function computeInsights() {
     if (cL != null && cE != null && (cL < cE * 0.85 || cL > cE * 1.15)) {
       var better = cL < cE;
       ins.push({
-        tone: better ? 'good' : 'bad',
+        g: 'perf', tone: better ? 'good' : 'bad',
         title: better ? 'Efficiency has improved recently' : 'Efficiency has slipped recently',
         body: 'Cost per ' + U + ' was ' + money(cL) + ' across the last three full weeks (' + int(rL) + ' ' + UP + ' on ' + money(sL) + '), against ' + money(cE) + ' in the ' + earlier.length + ' weeks before. ' +
           (wk.length > 1 ? 'Best week: ' + wk[0].w.label + ' at ' + money(wk[0].c) + '. Weakest week with results: ' + wk[wk.length - 1].w.label + ' at ' + money(wk[wk.length - 1].c) + '.' : '') +
@@ -68,7 +68,7 @@ function computeInsights() {
     else if (dCvr != null && dCvr < -0.1) { t3 = 'Clicks are converting less often'; tone3 = 'bad'; }
     else if (dCpc != null && dCpc < -0.1) { t3 = 'Clicks are getting cheaper'; tone3 = 'good'; }
     ins.push({
-      tone: tone3, title: t3,
+      g: 'perf', tone: tone3, title: t3,
       body: 'Impressions are ' + chgWord(cur.impr, pri.impr) + ' and clicks are ' + chgWord(cur.clicks, pri.clicks) + '. CTR moved from ' + pct(ctrO(pri) || 0) + ' to ' + pct(ctrO(cur) || 0) + ', average CPC from ' + money2(cpclkO(pri) || 0) + ' to ' + money2(cpclkO(cur) || 0) +
         ', and conversion rate (conversions divided by clicks) from ' + pct(cvrO(pri) || 0) + ' to ' + pct(cvrO(cur) || 0) + '.' +
         (dCpc != null && dCpc < -0.1 && dCvr != null && dCvr < -0.1 ? ' Cheaper, broader clicks usually convert less often, which is why cost per ' + U + ' may not fall as fast as CPC.' : '')
@@ -78,12 +78,12 @@ function computeInsights() {
   /* 4. campaign leaders and laggards */
   var live = C.filter(function (c) { return c.cur.spend >= Math.max(thrCamp() * 0.5, cur.spend * 0.05); });
   live.forEach(function (c) { c._cpr = c.cur[RK] ? c.cur.spend / c.cur[RK] : Infinity; });
-  var rank = live.slice().sort(function (a, b) { return a._cpr - b._cpr; });
+  var rank = live.slice().sort(function (a, b) { return HAS.rev ? (b.cur.rev / (b.cur.spend || 1)) - (a.cur.rev / (a.cur.spend || 1)) : a._cpr - b._cpr; });
   var best = rank[0], worst = rank[rank.length - 1];
   if (live.length >= 2 && best && worst && best !== worst && best._cpr !== Infinity) {
     var bs = best.cur.spend / cur.spend, ws = worst.cur.spend / cur.spend;
     ins.push({
-      tone: 'neutral', title: best.name + ' leads, ' + worst.name + ' lags',
+      g: 'camp', tone: 'neutral', title: best.name + ' leads, ' + worst.name + ' lags',
       body: best.name + ' costs ' + money(best._cpr) + ' per ' + U + ' on ' + pct0(bs) + ' of spend' + (HAS.rev && best.cur.spend ? ' (' + xf(best.cur.rev / best.cur.spend) + ' return)' : '') + '. ' +
         worst.name + (worst._cpr === Infinity ? ' has produced no ' + UP : ' costs ' + money(worst._cpr) + ' per ' + U) + ' on ' + pct0(ws) + ' of spend. ' +
         (ws >= 0.1 ? 'Shifting budget from ' + worst.name + ' toward ' + best.name + ' is the first lever to test.' : '')
@@ -97,7 +97,7 @@ function computeInsights() {
     var gaps = C.map(function (c) { return { c: c, g: c.cur.conv - (c.cur[RK] || 0) }; }).sort(function (a, b) { return b.g - a.g; });
     trackGap = gaps[0];
     ins.push({
-      tone: 'warn', title: 'Google counts more conversions than ' + UP,
+      g: 'camp', tone: 'warn', title: 'Google counts more conversions than ' + UP,
       body: 'Google Ads reports ' + int(cur.conv) + ' conversions, but only ' + int(R) + ' are ' + UP + '. The biggest gap is in ' + gaps[0].c.name + ' (about ' + int(gaps[0].g) + ' extra). Extra conversion actions, such as logins or follow-on video views, make cost per conversion look better than it is and can steer bidding toward the wrong action. Cost per ' + U + ' is the number to manage to.'
     });
   }
@@ -111,7 +111,7 @@ function computeInsights() {
     var searchSp = sum(C.filter(function (c) { return c.type === 'search'; }).map(function (c) { return c.cur.spend; }));
     if (wSp >= Math.max(20, tSp * 0.03)) {
       ins.push({
-        tone: wSp / tSp > 0.5 ? 'bad' : 'warn', title: money(wSp) + ' went to search terms with no ' + UP,
+        g: 'search', tone: wSp / tSp > 0.5 ? 'bad' : 'warn', title: money(wSp) + ' went to search terms with no ' + UP,
         body: 'Of the ' + money(tSp) + ' spent on the ' + terms.length + ' highest-spend search terms Google shows, ' + money(wSp) + ' (' + pct0(wSp / tSp) + ') went to terms with no ' + UP + '. Largest: ' +
           listNames(wasted, function (t) { return '"' + t.name + '" (' + money(t.spend) + ')'; }, 4) + '. Google hides low-volume terms, so these terms cover about ' + (searchSp ? pct0(Math.min(1, tSp / searchSp)) : 'part') + ' of Search spend.'
       });
@@ -125,7 +125,7 @@ function computeInsights() {
       var lines = gs.concat([other]).filter(function (g) { return g.spend > 0; }).map(function (g) {
         return g.n + ': ' + money(g.spend) + ' (' + pct0(g.spend / tSp) + ' of term spend), ' + int(g.r) + ' ' + (g.r === 1 ? U : UP) + (g.r ? ' at ' + money(g.spend / g.r) + ' each' : '');
       });
-      if (lines.length > 1) ins.push({ tone: 'neutral', title: 'What people are searching for', body: lines.join('. ') + '. Check that the groups bringing ' + UP + ' are also the ones that turn into customers.' });
+      if (lines.length > 1) ins.push({ g: 'search', tone: 'neutral', title: 'What people are searching for', body: lines.join('. ') + '. Check that the groups bringing ' + UP + ' are also the ones that turn into customers.' });
     }
   }
 
@@ -137,7 +137,7 @@ function computeInsights() {
     var parts = [];
     if (win.length) parts.push('Best keywords: ' + listNames(win, function (k) { return '"' + k.name + '" (' + k.detail.toLowerCase() + ', ' + money(k.spend / k[RK]) + ' per ' + U + ')'; }, 3));
     if (zeroKw.length) parts.push('Keywords with at least ' + money(Math.round(thrItem() / 5) * 5) + ' of spend and no ' + UP + ': ' + listNames(zeroKw, function (k) { return '"' + k.name + '" (' + money(k.spend) + ')'; }, 4) + ', ' + money(sum(zeroKw.map(function (k) { return k.spend; }))) + ' together');
-    if (parts.length) ins.push({ tone: zeroKw.length ? 'warn' : 'good', title: 'Keyword winners and wasted spend', body: parts.join('. ') + '.' });
+    if (parts.length) ins.push({ g: 'search', tone: zeroKw.length ? 'warn' : 'good', title: 'Keyword winners and wasted spend', body: parts.join('. ') + '.' });
   }
 
   /* 8. audience segments */
@@ -152,7 +152,7 @@ function computeInsights() {
   });
   var dev = groupBy('device').sort(function (a, b) { return b.spend - a.spend; });
   if (dev.length) { var dsum = sum(dev.map(function (d) { return d.spend; })); if (dsum && dev[0].spend / dsum >= 0.6) seg.push(dev[0].name.toLowerCase() + ' takes ' + pct0(dev[0].spend / dsum) + ' of spend'); }
-  if (seg.length) ins.push({ tone: 'neutral', title: 'Who responds best', body: seg.map(function (s) { return s.charAt(0).toUpperCase() + s.slice(1); }).join('. ') + '.' });
+  if (seg.length) ins.push({ g: 'aud', tone: 'neutral', title: 'Who responds best', body: seg.map(function (s) { return s.charAt(0).toUpperCase() + s.slice(1); }).join('. ') + '.' });
 
   /* 9. day of week */
   if (N >= 28) {
@@ -160,7 +160,7 @@ function computeInsights() {
     for (var i = 0; i < N; i++) { var wd = new Date(START + i * DAY).getUTCDay(); dw[wd].spend += A.d.spend[i]; dw[wd].r += (A.d[RK] || A.d.conv)[i]; }
     var q = dw.filter(function (x) { return x.r >= 3; }); q.forEach(function (x) { x.c = x.spend / x.r; }); q.sort(function (a, b) { return a.c - b.c; });
     var NM = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    if (q.length >= 4 && q[q.length - 1].c / q[0].c >= 1.3) ins.push({ tone: 'neutral', title: NM[q[0].d] + ' is the strongest day', body: NM[q[0].d] + ' costs ' + money(q[0].c) + ' per ' + U + ' and ' + NM[q[q.length - 1].d] + ' costs ' + money(q[q.length - 1].c) + '. If this holds for a few more weeks, test lower bids or tighter budgets on the weakest days.' });
+    if (q.length >= 4 && q[q.length - 1].c / q[0].c >= 1.3) ins.push({ g: 'perf', tone: 'neutral', title: NM[q[0].d] + ' is the strongest day', body: NM[q[0].d] + ' costs ' + money(q[0].c) + ' per ' + U + ' and ' + NM[q[q.length - 1].d] + ' costs ' + money(q[q.length - 1].c) + '. If this holds for a few more weeks, test lower bids or tighter budgets on the weakest days.' });
   }
 
   /* 10. search impression share */
@@ -171,7 +171,7 @@ function computeInsights() {
     var wavg = function (k) { return sum(sc.map(function (c) { return (c[k] || 0) * c.cur.spend; })) / ssp; };
     var ISv = wavg('is'); isLostB = wavg('lostB'); isLostR = wavg('lostR');
     ins.push({
-      tone: 'neutral', title: 'Search wins about ' + pct0(ISv) + ' of the impressions it could',
+      g: 'camp', tone: 'neutral', title: 'Search wins about ' + pct0(ISv) + ' of the impressions it could',
       body: 'Across Search campaigns, roughly ' + pct0(isLostB) + ' of eligible impressions are lost to budget and ' + pct0(isLostR) + ' to ad rank (bids and quality). ' +
         (isLostB >= 0.2 ? 'Budget is capping reach, so adding budget to the campaigns with the best cost per ' + U + ' can add volume.' : isLostR >= 0.4 ? 'Ad rank is the bigger limit, so ad relevance, quality and landing page matter more than budget.' : 'Neither limit is large, so growth will come from better conversion more than from more spend.')
     });
@@ -183,7 +183,7 @@ function computeInsights() {
     var vs = sum(vids.map(function (c) { return c.cur.spend; })), vr = sum(vids.map(function (c) { return c.cur[RK] || 0; }));
     var os = cur.spend - vs, orr = R - vr;
     ins.push({
-      tone: 'neutral', title: 'Video is ' + pct0(vs / cur.spend) + ' of spend',
+      g: 'camp', tone: 'neutral', title: 'Video is ' + pct0(vs / cur.spend) + ' of spend',
       body: 'Video campaigns spent ' + money(vs) + ' and produced ' + int(vr) + ' ' + UP + (vr ? ' (' + money(vs / vr) + ' each)' : '') + ', against ' + int(orr) + ' ' + UP + (orr ? ' at ' + money(os / orr) + ' each' : '') + ' from the rest of the account. ' +
         (vs / cur.spend < 0.15 ? 'Video is still a small test. Give it a set budget and time window before judging it, and compare it on cost per ' + U + ' rather than views.' : 'Compare creative inside video on cost per ' + U + ', not views.')
     });
@@ -223,5 +223,40 @@ function computeInsights() {
   if (META.warnings && META.warnings.length) notes.push({ title: 'Some detail could not be loaded', body: 'Parts of the account could not be loaded just now (' + META.warnings.map(function (w) { return String(w).split(':')[0]; }).join(', ') + '). The rest of the report is complete. It will fill in on the next refresh.' });
   if (!C.some(function (c) { return c.type === 'video'; })) notes.push({ title: 'No video campaigns in this view', body: 'Video and YouTube results appear here when video or Demand Gen campaigns are running.' });
 
-  return { insights: ins, actions: acts, notes: notes, team: META.notes || [] };
+  return { insights: ins, actions: acts, notes: notes, team: META.notes || [], wins: findWins({ cur: cur, pri: pri, hasPri: hasPri, R: R, PR: PR, cpr: cpr, pcpr: pcpr, U: U, UP: UP, FW: FW, best: best, live: live }) };
+}
+
+/* ===== wins: up to three good things that happened in the selected range ===== */
+function findWins(x) {
+  var w = [], cur = x.cur, pri = x.pri, U = x.U, UP = x.UP;
+  function add(p, title, body) { w.push({ p: p, title: title, body: body }); }
+  var sp = function (a, b) { return 'Spend was ' + money(a) + (b ? ', ' + chgWord(a, b) + ' on the previous ' + N + ' days' : '') + '.'; };
+  if (x.hasPri && x.PR && x.R && (x.R - x.PR) / x.PR >= 0.05) add(1, int(x.R) + ' ' + UP + ', up ' + Math.round((x.R - x.PR) / x.PR * 100) + '%', 'That is ' + (Math.round(x.R) - Math.round(x.PR)) + ' more than the previous ' + N + ' days (' + int(x.PR) + '). ' + sp(cur.spend, pri.spend));
+  if (x.hasPri && x.cpr != null && x.pcpr != null && (x.cpr - x.pcpr) / x.pcpr <= -0.05) add(2, 'Cost per ' + U + ' fell to ' + money(x.cpr), 'Down ' + Math.round((x.pcpr - x.cpr) / x.pcpr * 100) + '% from ' + money(x.pcpr) + ' in the previous ' + N + ' days, so each result costs less.');
+  if (x.hasPri && HAS.rev && cur.spend && pri.spend && pri.rev) {
+    var r1 = cur.rev / cur.spend, r0 = pri.rev / pri.spend;
+    if (r1 / r0 >= 1.05) add(1, 'Return on ad spend rose to ' + xf(r1), 'Up from ' + xf(r0) + '. ' + money(cur.rev) + ' of revenue on ' + money(cur.spend) + ' of spend.');
+  }
+  if (x.hasPri) {
+    var dCv = chgPct(cvrO(cur) || 0, cvrO(pri) || 0), dCp = chgPct(cpclkO(cur) || 0, cpclkO(pri) || 0);
+    if (dCv != null && dCv >= 0.1) add(3, 'More clicks are turning into results', 'Conversion rate (conversions divided by clicks) went from ' + pct(cvrO(pri) || 0) + ' to ' + pct(cvrO(cur) || 0) + '.');
+    if (dCp != null && dCp <= -0.1 && cur.clicks >= pri.clicks * 0.9) add(4, 'Clicks are getting cheaper', 'Average cost per click fell from ' + money2(cpclkO(pri) || 0) + ' to ' + money2(cpclkO(cur) || 0) + ' without losing traffic.');
+  }
+  var b = x.best;
+  if (b && b._cpr !== Infinity && b.cur[RK] >= 3 && x.live.length >= 2 && stat(b.cur, thrCamp()) === 'scale') add(3, b.name + ' is the most efficient campaign', money(b._cpr) + ' per ' + U + ' on ' + money(b.cur.spend) + ' of spend (' + int(b.cur[RK]) + ' ' + UP + ')' + (HAS.rev && b.cur.spend ? ', a ' + xf(b.cur.rev / b.cur.spend) + ' return' : '') + '.');
+  var fw = x.FW.filter(function (k) { return k[RK] > 0; });
+  if (fw.length >= 3) {
+    var avg = sum(fw.map(function (k) { return k.spend; })) / sum(fw.map(function (k) { return k[RK]; }));
+    var bw = fw.slice().sort(function (p, q) { return p.spend / p[RK] - q.spend / q[RK]; })[0];
+    if (bw.spend / bw[RK] <= avg * 0.85) add(5, 'Best week: ' + bw.label, int(bw[RK]) + ' ' + UP + ' at ' + money(bw.spend / bw[RK]) + ' each, against ' + money(avg) + ' across the range.');
+  }
+  var ad = (ITEMS.ads || []).filter(function (a) { return a[RK] >= 3 && a.spend >= thrItem(); }).sort(function (p, q) { return p.spend / p[RK] - q.spend / q[RK]; })[0];
+  if (ad) add(6, 'Top ad: "' + ad.h1 + '"', money(ad.spend / ad[RK]) + ' per ' + U + ' (' + int(ad[RK]) + ' ' + UP + ' on ' + money(ad.spend) + ').');
+  var vd = (ITEMS.videos || []).filter(function (v) { return v[RK] >= 3 && v.spend >= thrItem(); }).sort(function (p, q) { return p.spend / p[RK] - q.spend / q[RK]; })[0];
+  if (vd) add(6, 'Top video: "' + vd.name + '"', money(vd.spend / vd[RK]) + ' per ' + U + ' (' + int(vd[RK]) + ' ' + UP + ' on ' + money(vd.spend) + ').');
+  var kw = (ITEMS.keywords || []).filter(function (k) { return k[RK] >= 3; }).sort(function (p, q) { return p.spend / p[RK] - q.spend / q[RK]; })[0];
+  if (kw) add(7, 'Top keyword: "' + kw.name + '"', money(kw.spend / kw[RK]) + ' per ' + U + ' (' + int(kw[RK]) + ' ' + UP + ').');
+  if (!w.length && x.R) add(9, int(x.R) + ' ' + UP + ' in this range', money(cur.spend) + ' of spend, ' + money(x.cpr) + ' per ' + U + '.');
+  w.sort(function (p, q) { return p.p - q.p; });
+  return w.slice(0, 3);
 }

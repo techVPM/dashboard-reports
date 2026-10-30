@@ -11,12 +11,21 @@
     <header class="top">
       <div><h1 id="ttl">Performance report</h1><p id="sub"></p></div>
       <div class="ctl">
-        <div class="seg" id="rangeseg" role="group" aria-label="Date range"></div>
         <div class="seg" id="typeseg" role="group" aria-label="Campaign type" hidden></div>
+        <div class="datebox">
+          <div class="seg" id="rangeseg" role="group" aria-label="Date range"></div>
+          <div class="rangebar" id="rangebar"></div>
+        </div>
       </div>
     </header>
-    <div class="rangebar" id="rangebar"></div>
     <section id="view" aria-live="polite"><div class="panel"><p class="msg">Loading your report</p></div></section>
   </main>
+</div>
+<div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mtitle">
+  <div class="mbox">
+    <div class="mhead"><div><h2 id="mtitle"></h2><p id="mmeta"></p></div><button type="button" class="mclose" data-close="1" aria-label="Close video">&times;</button></div>
+    <div class="mvideo" id="mvideo"></div>
+    <p class="mlink" id="mlink"></p>
+  </div>
 </div>
 </div>

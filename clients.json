@@ -1,12 +1,30 @@
 [
   {
-    "token": "eUqBcXY_ujN2tN3yD0awf1a6Z18HXRTh",
+    "token": "ampleo-0373",
+    "name": "Ampleo",
+    "customer_id": "724-430-0373"
+  },
+  {
+    "token": "axomo-1580",
+    "name": "Axomo",
+    "customer_id": "659-889-1580"
+  },
+  {
+    "token": "coach-by-chris-1613",
     "name": "Coach by Chris",
     "customer_id": "683-045-1613",
     "timezone": "America/New_York",
-    "outcomes": { "calls": ["Booked Call"] },
-    "labels": { "calls": "Booked calls" },
-    "targets": { "cpc": null },
+    "outcomes": {
+      "calls": [
+        "Booked Call"
+      ]
+    },
+    "labels": {
+      "calls": "Booked calls"
+    },
+    "targets": {
+      "cpc": null
+    },
     "notes": [],
     "actions": [],
     "term_groups": {
@@ -14,5 +32,31 @@
       "AA and 12-step seekers": "\\baa\\b|anonymous|12 step|twelve step|sponsor",
       "Treatment, hotline and rehab": "hotline|helpline|rehab|detox|treatment|outpatient"
     }
+  },
+  {
+    "token": "eo-utah-1852",
+    "name": "EO Utah",
+    "customer_id": "582-765-1852"
+  },
+  {
+    "token": "real-property-management-4421",
+    "name": "Real Property Management",
+    "customer_id": "959-824-4421",
+    "timezone": "America/New_York"
+  },
+  {
+    "token": "mattress-makers-9653",
+    "name": "Mattress Makers",
+    "customer_id": "160-436-9653"
+  },
+  {
+    "token": "sandler-7469",
+    "name": "Sandler",
+    "customer_id": "306-924-7469"
+  },
+  {
+    "token": "the-scalable-company-7074",
+    "name": "The Scalable Company",
+    "customer_id": "626-453-7074"
   }
 ]

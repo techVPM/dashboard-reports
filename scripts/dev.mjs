@@ -15,7 +15,9 @@ http.createServer(async (req, res) => {
     res.end(Buffer.from(await r.arrayBuffer()));
     return;
   }
-  const f = join(root, 'dist', url.pathname === '/' ? 'index.html' : url.pathname);
+  let name = url.pathname === '/' ? 'index.html' : url.pathname;
+  if (!existsSync(join(root, 'dist', name)) && /^\/[A-Za-z0-9_-]+\/?$/.test(name)) name = 'index.html'; // clean links like /coach-by-chris-1613
+  const f = join(root, 'dist', name);
   if (existsSync(f) && f.startsWith(join(root, 'dist'))) { res.writeHead(200, { 'content-type': f.endsWith('.html') ? 'text/html; charset=utf-8' : 'text/plain' }); res.end(readFileSync(f)); }
   else { res.writeHead(404); res.end('not found'); }
 }).listen(port, () => console.log('preview on http://localhost:' + port));

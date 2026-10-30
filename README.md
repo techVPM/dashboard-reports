@@ -116,7 +116,7 @@ Open `clients.json`. Each client is one block (see `clients.example.json` for ev
 
 ```json
 {
-  "token": "long-random-private-key",
+  "token": "coach-by-chris-1613",
   "name": "Coach by Chris",
   "customer_id": "683-045-1613",
   "timezone": "America/New_York",
@@ -124,7 +124,8 @@ Open `clients.json`. Each client is one block (see `clients.example.json` for ev
 }
 ```
 
-- `token`: the private part of the client's link. Make it long and random. If you have Node on your computer, `node scripts/add-client.mjs "Client Name" 123-456-7890` writes a new block with a random key for you.
+- `token`: the client's link key. We use the client name in lowercase with dashes, then the last 4 digits of their Google Ads ID, for example `coach-by-chris-1613`. Use only lowercase letters, numbers and dashes. If you have Node on your computer, `node scripts/add-client.mjs "Client Name" 123-456-7890` writes a new block with this key for you.
+  - These links are easy to guess, because the client name is public and there are only 10,000 possible endings. If a report is sensitive, add a few random letters to the end of that client's `token` (for example `sandler-7469-k3f9`).
 - `customer_id`: the client's Google Ads account ID.
 - `timezone`: the time zone set on the client's Google Ads account.
 - `outcomes`: **this is the important one.** It says which Google conversion actions count as a result. Use the exact names from the account's Goals, Conversions list. You can use any of `leads`, `calls`, `deals`. Anything not listed (logins, extra video views and so on) is still shown as "Conversions (Google)" but is not counted as a result. The report calls out the gap for you.
@@ -137,22 +138,35 @@ Open `clients.json`. Each client is one block (see `clients.example.json` for ev
 - `last_change_date`: optional. Date of the last account change (YYYY-MM-DD). Shows the "Day X of 14" waiting clock.
 - `disabled: true` turns a client's link off without deleting it.
 
-Coach by Chris is already in `clients.json` with a private key. Its link is `https://YOUR-SITE.netlify.app/?k=THAT-KEY`.
+These clients are already in `clients.json`:
+
+| Client | Google Ads ID | Link |
+|---|---|---|
+| Ampleo | 724-430-0373 | `/ampleo-0373` |
+| Axomo | 659-889-1580 | `/axomo-1580` |
+| Coach by Chris | 683-045-1613 | `/coach-by-chris-1613` |
+| EO Utah | 582-765-1852 | `/eo-utah-1852` |
+| Real Property Management | 959-824-4421 | `/real-property-management-4421` |
+| Mattress Makers | 160-436-9653 | `/mattress-makers-9653` |
+| Sandler | 306-924-7469 | `/sandler-7469` |
+| The Scalable Company | 626-453-7074 | `/the-scalable-company-7074` |
+
+Put your site address in front, for example `https://vpm-dashboard.netlify.app/coach-by-chris-1613`. Only Coach by Chris has its booked-call settings so far. The others count every Google conversion as a result until you add `outcomes` for them. Time zones default to Mountain, except Coach by Chris and Real Property Management, which are Eastern.
 
 To change clients without redeploying, you can instead paste the whole list into a Netlify setting called `CLIENTS_JSON`. If that setting exists it is used instead of the file.
 
 ## Part 5. The daily 10 am refresh
 
-Nothing to do. Netlify runs `refresh-scheduled` every day at 16:00 UTC, which is 10:00 am Mountain Daylight Time and 9:00 am Mountain Standard Time. After daylight saving ends in November, change `0 16 * * *` to `0 17 * * *` in `netlify/functions/refresh-scheduled.mjs` if you want it to stay at 10 am.
+Nothing to do. Netlify runs `refresh-scheduled` every day at 17:00 UTC, which is 10:00 am Mountain Standard Time (November to March). In March, when daylight saving starts, change `0 17 * * *` to `0 16 * * *` in `netlify/functions/refresh-scheduled.mjs` to keep it at 10 am.
 
 To test it, open the site in Netlify, go to **Functions, refresh-scheduled** and use **Run now**. Then check the logs of `refresh-background`. Scheduled functions only run on the production deploy.
 
 To force one client to reload right now: open
-`https://YOUR-SITE.netlify.app/api/report?k=THEIR-KEY&days=30&fresh=1&s=YOUR-REFRESH_SECRET`
+`https://YOUR-SITE.netlify.app/THEIR-KEY?fresh=1&s=YOUR-REFRESH_SECRET`
 
 ## Part 6. Give clients their link
 
-`https://YOUR-SITE.netlify.app/?k=THEIR-KEY`
+`https://YOUR-SITE.netlify.app/THEIR-KEY`, for example `https://vpm-dashboard.netlify.app/sandler-7469`. The older `?k=THEIR-KEY` style still works too.
 
 To use a VPM address such as `reports.videopower.org`: in Netlify, **Domain management, Add a domain**, then add the CNAME record Netlify shows you at your DNS provider.
 

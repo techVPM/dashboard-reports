@@ -3,6 +3,12 @@
   publish = "dist"
   functions = "netlify/functions"
 
+[[redirects]]
+  # Clean client links: /coach-by-chris-1613 opens the report. Real files (index.html, ghl-embed.html) still win.
+  from = "/:slug"
+  to = "/index.html"
+  status = 200
+
 [functions]
   node_bundler = "esbuild"
 

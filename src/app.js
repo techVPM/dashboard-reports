@@ -1,7 +1,11 @@
 /* ===== app: shell, date range, loading, events ===== */
 var API = window.VPM_API_URL || '/api/report';
 var KEY = '';
-try { KEY = new URLSearchParams(location.search).get('k') || ''; } catch (e) { /* no query */ }
+try {
+  KEY = new URLSearchParams(location.search).get('k') || '';
+  // Clean links: https://site/coach-by-chris-1613 (the first part of the address is the key)
+  if (!KEY && !window.VPM_API_URL) { var seg = location.pathname.replace(/^\/+|\/+$/g, '').split('/')[0] || ''; if (/^[A-Za-z0-9_-]{4,200}$/.test(seg)) KEY = seg; }
+} catch (e) { /* no query */ }
 var CACHE = {}, loadSeq = 0, loaded = false;
 
 function render() {
@@ -37,13 +41,19 @@ function drawRangeBar() {
   seg.innerHTML = MODES.map(function (m) { return '<button data-range="' + m[0] + '" class="' + (S.range.mode === m[0] ? 'on' : '') + '" aria-pressed="' + (S.range.mode === m[0]) + '">' + m[1] + '</button>'; }).join('');
   var bar = document.getElementById('rangebar');
   var up = '';
-  if (META.refreshed_at) { var d = new Date(META.refreshed_at); up = isFinite(d) ? ' · Updated ' + d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Denver' }) + ' MT' : ''; }
-  var info = loaded ? '<div class="chip"><b>' + dlab(START, true) + ' to ' + dlab(START + (N - 1) * DAY, true) + '</b>' + esc(up) + '</div><div class="chip">vs ' + esc(prevLabel()) + '</div>' : '';
+  if (META.refreshed_at) { var d = new Date(META.refreshed_at); up = isFinite(d) ? 'Updated ' + d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Denver' }) + ' MT' : ''; }
+  // The chosen dates are shown once: in the date boxes when Custom is open, otherwise in the first chip.
+  var info = '';
+  if (loaded) {
+    if (S.range.mode !== 'custom') info += '<div class="chip"><b>' + dlab(START, true) + ' to ' + dlab(START + (N - 1) * DAY, true) + '</b></div>';
+    info += '<div class="chip">vs ' + esc(prevLabel()) + (up ? ' · ' + esc(up) : '') + '</div>';
+  }
   var form = '';
   if (S.range.mode === 'custom') {
     var maxd = iso(Date.now() + DAY);
     form = '<form class="custom" id="customform"><label>From <input type="date" id="cfrom" required max="' + maxd + '" value="' + esc(S.range.from) + '"></label><label>To <input type="date" id="cto" required max="' + maxd + '" value="' + esc(S.range.to) + '"></label><button type="submit" class="apply">Apply</button></form>';
   }
+  bar.className = 'rangebar' + (form ? ' stack' : '');
   bar.innerHTML = form + info;
 }
 function setBusy(b) { view.classList.toggle('busy', b); root.setAttribute('aria-busy', b ? 'true' : 'false'); }
@@ -59,7 +69,7 @@ function apply(P) {
   var h = ''; try { h = location.hash.slice(1); } catch (e) { /* ignore */ }
   if (!S.fresh) { S.fresh = 1; if (VIEWS[h]) S.view = h; else if (h.indexOf('c-') === 0 && camp(h.slice(2))) { S.view = 'campaign'; S.cid = h.slice(2); } }
   if (S.view === 'campaign' && !camp(S.cid)) S.view = 'campaigns';
-  S.met = { o: null, t: null, cd: null };
+  S.met = { o: null, t: null, cd: null }; S.page = {};
   banners(); drawRangeBar(); setBusy(false); render();
 }
 function load() {
@@ -84,7 +94,7 @@ function load() {
 
 /* ---------- events ---------- */
 root.addEventListener('click', function (e) {
-  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range]'); if (!t || !root.contains(t)) return;
+  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-page],[data-close]'); if (!t || !root.contains(t)) return;
   if (t.tagName === 'A') e.preventDefault();
   if (t.dataset.range) {
     var m = t.dataset.range;
@@ -95,6 +105,9 @@ root.addEventListener('click', function (e) {
     }
     S.range.mode = m; load(); return;
   }
+  if (t.dataset.close) return closeVideo();
+  if (t.dataset.vi) return openVideo(+t.dataset.vi);
+  if (t.dataset.page) { var pp = t.dataset.page.split(':'); S.page[pp[0]] = Math.max(0, (S.page[pp[0]] || 0) + (+pp[1])); return render(); }
   if (t.dataset.go) return go(t.dataset.go);
   if (t.dataset.camp) return go('campaign', t.dataset.camp);
   if (t.dataset.met) {
@@ -102,8 +115,8 @@ root.addEventListener('click', function (e) {
     t.parentNode.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b === t); });
     var c = charts.filter(function (x) { return x.id === p[0]; })[0]; if (c) drawChart(document.getElementById('ch-' + p[0]), c.A.d, S.scn, p[1]); return;
   }
-  if (t.dataset.type) { S.type = t.dataset.type; if (S.view === 'campaign') S.view = 'campaigns'; return render(); }
-  if (t.dataset.sort) { var q = t.dataset.sort.split(':'), cur = S.sort[q[0]]; S.sort[q[0]] = cur && cur[0] === q[1] ? [q[1], -cur[1]] : [q[1], q[1] === 'name' || q[1] === 'camp' ? 1 : -1]; return render(); }
+  if (t.dataset.type) { S.type = t.dataset.type; S.page = {}; if (S.view === 'campaign') S.view = 'campaigns'; return render(); }
+  if (t.dataset.sort) { var q = t.dataset.sort.split(':'), cur = S.sort[q[0]]; S.page[q[0]] = 0; S.sort[q[0]] = cur && cur[0] === q[1] ? [q[1], -cur[1]] : [q[1], q[1] === 'name' || q[1] === 'camp' ? 1 : -1]; return render(); }
 });
 root.addEventListener('submit', function (e) {
   if (e.target.id !== 'customform') return;
@@ -125,6 +138,36 @@ var rt; window.addEventListener('resize', function () {
     if (S.view === 'weekly' && loaded) { var A = agg(list()), Wk = weeks(A); weekChart(document.getElementById('ch-wk1'), Wk, 'bars'); weekChart(document.getElementById('ch-wk2'), Wk, 'line'); hourChart(document.getElementById('ch-hr')); }
   }, 120);
 });
+
+/* ---------- video popup ---------- */
+var lastFocus = null;
+function openVideo(i) {
+  var r = (ITEMS.videos || [])[i]; if (!r) return;
+  var m = document.getElementById('modal'), v = document.getElementById('mvideo');
+  document.getElementById('mtitle').textContent = r.name;
+  var parts = [];
+  if (r.camp) parts.push(r.camp);
+  if (r.dur) parts.push(r.dur);
+  parts.push('Spend ' + money(r.spend), int(r.views) + ' views');
+  if (r[RK]) parts.push(int(r[RK]) + ' ' + rlab().toLowerCase() + ' at ' + money(r.spend / r[RK]) + ' each');
+  document.getElementById('mmeta').textContent = parts.join(' · ');
+  if (r.vid && /^[A-Za-z0-9_-]{5,20}$/.test(r.vid)) {
+    v.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + r.vid + '?autoplay=1&rel=0" title="' + esc(r.name) + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>';
+    document.getElementById('mlink').innerHTML = 'Video not playing? <a href="https://www.youtube.com/watch?v=' + r.vid + '" target="_blank" rel="noopener noreferrer">Open it on YouTube</a>';
+  } else {
+    v.innerHTML = '<div class="mnone">' + (MODE === 'demo' ? 'Sample data has no real videos. In a live report the video plays here.' : 'Google did not return a video link for this creative.') + '</div>';
+    document.getElementById('mlink').innerHTML = '';
+  }
+  lastFocus = document.activeElement; m.hidden = false;
+  try { m.querySelector('.mclose').focus(); } catch (e) { /* ignore */ }
+}
+function closeVideo() {
+  var m = document.getElementById('modal'); if (m.hidden) return;
+  m.hidden = true; document.getElementById('mvideo').innerHTML = '';   // removing the player stops the sound
+  try { if (lastFocus) lastFocus.focus(); } catch (e) { /* ignore */ }
+}
+document.getElementById('modal').addEventListener('click', function (e) { if (e.target === this) closeVideo(); });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeVideo(); });
 
 /* ---------- start ---------- */
 (function () {

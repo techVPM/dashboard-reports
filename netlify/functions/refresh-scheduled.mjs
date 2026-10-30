@@ -1,6 +1,6 @@
 // Runs every day and asks the background function to refresh each client.
-// Schedule is in UTC. 16:00 UTC = 10:00 am Mountain Daylight Time (summer), 9:00 am Mountain Standard Time (winter).
-// Change the cron line below to "0 17 * * *" after daylight saving ends if you want 10 am all year.
+// Schedule is in UTC. 17:00 UTC = 10:00 am Mountain Standard Time (winter, Nov to Mar), 11:00 am Mountain Daylight Time (summer).
+// In March, change the cron line below to "0 16 * * *" to keep it at 10 am.
 import { loadClients } from '../lib/store.mjs';
 
 export default async () => {
@@ -25,4 +25,4 @@ export default async () => {
   console.log('refresh queued for', clients.length, 'clients;', results.filter((r) => r.status === 'fulfilled').length, 'accepted');
 };
 
-export const config = { schedule: '0 16 * * *' };
+export const config = { schedule: '0 17 * * *' };
