@@ -21,7 +21,7 @@ export default async (req) => {
     try {
       const payload = await buildReport({ client, from, to });
       await cachePut(cacheKey(client, from, to), { saved_at: Date.now(), payload });
-      if (days === 30) await cachePut(latestKey(client.token), { saved_at: Date.now(), payload });
+      await cachePut(latestKey(client.token, days), { saved_at: Date.now(), payload });
       console.log('refreshed', client.name, days + 'd', payload.meta.warnings.length ? 'warnings: ' + payload.meta.warnings.join('; ') : 'ok');
     } catch (e) {
       console.error('refresh failed', client.name, days + 'd', e.message);

@@ -5,9 +5,18 @@
     <div class="tbtns"><a class="tlink" href="/admin">Edit clients and goals</a><button type="button" class="tlink" id="out" hidden>Sign out</button></div>
   </header>
   <div class="thead">
-    <div><h1>All clients</h1><p class="sub" id="tsub">Last 30 days, checked against each client's goals.</p></div>
-    <div class="seg" id="filt" role="group" aria-label="Filter clients" hidden></div>
+    <div><h1>All clients</h1><p class="sub" id="tsub">Checked against each client's goals.</p></div>
+    <div class="tctl" id="tctl" hidden>
+      <div class="seg" id="rng" role="group" aria-label="Date range"></div>
+      <div class="seg" id="vw" role="group" aria-label="View"></div>
+    </div>
   </div>
+  <form class="panel tcustom" id="cform" hidden>
+    <label>From <input type="date" id="cfrom" required></label>
+    <label>To <input type="date" id="cto" required></label>
+    <button class="mbtn" type="submit">Show this range</button>
+    <span class="sub">Custom ranges are fetched live from Google, about 10 to 30 seconds per client.</span>
+  </form>
   <form class="panel gate" id="gate" hidden>
     <h2>Team sign in</h2>
     <p class="sub">Use the admin password (the ADMIN_PASSWORD setting in Netlify).</p>
@@ -16,45 +25,71 @@
   </form>
   <section id="sum" class="sumrow"></section>
   <section id="list" class="clist"><div class="panel"><p class="msg">Loading</p></div></section>
+  <p class="sub" id="foot"></p>
 </div>
 </div>
 <script>
 (function () {
   'use strict';
-  var KEY = 'vpm_admin_key', pw = '';
-  try { pw = localStorage.getItem(KEY) || ''; } catch (e) { /* private mode */ }
+  var KEY = 'vpm_admin_key', VKEY = 'vpm_team_view', pw = '', VIEW = 'cards';
+  try { pw = localStorage.getItem(KEY) || ''; VIEW = localStorage.getItem(VKEY) || 'cards'; } catch (e) { /* private mode */ }
   var $ = function (id) { return document.getElementById(id); };
-  var DATA = null, FILT = 'all', OPEN = {};
+  var ROWS = [], INACTIVE = 0, FILT = 'all', OPEN = {}, RANGE = { mode: '30', from: '', to: '' }, GEN = 0;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function money(v) { return v == null ? 'n/a' : '$' + Math.round(v).toLocaleString('en-US'); }
   function money2(v) { return v == null ? 'n/a' : '$' + (v >= 1000 ? Math.round(v).toLocaleString('en-US') : v.toFixed(2)); }
   function int(v) { return v == null ? 'n/a' : Math.round(v).toLocaleString('en-US'); }
   function fmt(v, u) { return u === 'money' ? money(v) : u === 'money2' ? money2(v) : u === 'x' ? (v == null ? 'n/a' : v.toFixed(2) + 'x') : int(v); }
-  function chg(a, b) { if (!b) return ''; var p = Math.round((a - b) / b * 100); return (p > 0 ? '+' : '') + p + '%'; }
+  function chg(a, b, inv) { if (!b || a == null) return ''; var p = Math.round((a - b) / b * 100), good = inv ? p < 0 : p > 0; return '<em class="' + (p === 0 ? '' : good ? 'up' : 'dn') + '">' + (p > 0 ? '+' : '') + p + '%</em>'; }
+  function dlab(iso) { return iso ? new Date(iso + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : ''; }
   var WORD = { good: 'On track', warn: 'Watch', bad: 'Off track', none: 'No goals or data' };
   var ORDER = { bad: 0, warn: 1, good: 2, none: 3 };
 
-  function api(path, opt) {
-    opt = opt || {}; opt.headers = Object.assign({ 'x-admin-key': pw }, opt.headers || {});
-    return fetch(path, opt).then(function (r) { return r.json().then(function (j) { if (r.status === 401) throw { auth: 1 }; if (!r.ok) throw new Error(j.error || 'Failed'); return j; }); });
+  function api(path) {
+    return fetch(path, { headers: { 'x-admin-key': pw } }).then(function (r) { return r.json().then(function (j) { if (r.status === 401) throw { auth: 1 }; if (!r.ok) throw new Error(j.error || 'Failed'); return j; }); });
   }
   function gate(msg) {
-    $('gate').hidden = false; $('list').innerHTML = ''; $('sum').innerHTML = ''; $('filt').hidden = true; $('out').hidden = true;
+    $('gate').hidden = false; $('list').innerHTML = ''; $('sum').innerHTML = ''; $('tctl').hidden = true; $('cform').hidden = true; $('out').hidden = true;
     if (msg) { $('gerr').hidden = false; $('gerr').textContent = msg; }
     $('pw').focus();
   }
-  $('gate').addEventListener('submit', function (e) {
-    e.preventDefault(); pw = $('pw').value.trim(); if (!pw) return;
-    try { localStorage.setItem(KEY, pw); } catch (er) { /* ignore */ }
-    load();
-  });
+  $('gate').addEventListener('submit', function (e) { e.preventDefault(); pw = $('pw').value.trim(); if (!pw) return; try { localStorage.setItem(KEY, pw); } catch (er) { /* ignore */ } load(); });
   $('out').addEventListener('click', function () { try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ } pw = ''; gate(); });
+  $('cform').addEventListener('submit', function (e) {
+    e.preventDefault(); var f = $('cfrom').value, t = $('cto').value;
+    if (!f || !t || f > t) return alert('Pick a start date before the end date.');
+    RANGE.from = f; RANGE.to = t; load();
+  });
 
+  function rangeQS() { return RANGE.mode === 'custom' ? 'from=' + RANGE.from + '&to=' + RANGE.to : 'days=' + RANGE.mode; }
+  function controls() {
+    $('tctl').hidden = false;
+    $('rng').innerHTML = [['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['custom', 'Custom']].map(function (o) { return '<button type="button" data-r="' + o[0] + '" class="' + (RANGE.mode === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('');
+    $('vw').innerHTML = [['cards', 'Cards'], ['table', 'Table']].map(function (o) { return '<button type="button" data-v="' + o[0] + '" class="' + (VIEW === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('');
+    $('cform').hidden = RANGE.mode !== 'custom';
+  }
   function load() {
     if (!pw) return gate();
+    var gen = ++GEN;
+    controls();
+    if (RANGE.mode === 'custom' && !(RANGE.from && RANGE.to)) { $('list').innerHTML = '<div class="panel"><p class="msg">Pick the dates above.</p></div>'; $('sum').innerHTML = ''; return; }
     $('list').innerHTML = '<div class="panel"><p class="msg">Loading every client</p></div>';
-    api('/api/team').then(function (j) { DATA = j; $('gate').hidden = true; $('gerr').hidden = true; $('out').hidden = false; draw(); })
-      .catch(function (e) { if (e && e.auth) gate('That password did not work.'); else $('list').innerHTML = '<div class="panel"><p class="msg">' + esc(e.message) + '</p></div>'; });
+    api('/api/team?days=' + (RANGE.mode === 'custom' ? 30 : RANGE.mode)).then(function (j) {
+      if (gen !== GEN) return;
+      $('gate').hidden = true; $('gerr').hidden = true; $('out').hidden = false; INACTIVE = j.inactive || 0;
+      if (RANGE.mode !== 'custom') { ROWS = j.clients; return draw(); }
+      ROWS = j.clients.map(function (r) { return { token: r.token, name: r.name, customer_id: r.customer_id, report_url: r.report_url, ads_url: r.ads_url, missing: true, loading: true, why: 'Loading', checks: [], overall: 'none' }; });
+      draw();
+      var q = ROWS.map(function (r) { return r.token; });
+      function next() { var t = q.shift(); if (!t) return; fetchOne(t, gen).then(next, next); }
+      next(); next(); next();
+    }).catch(function (e) { if (e && e.auth) gate('That password did not work.'); else $('list').innerHTML = '<div class="panel"><p class="msg">' + esc(e.message) + '</p></div>'; });
+  }
+  function fetchOne(token, gen) {
+    return api('/api/team?token=' + encodeURIComponent(token) + '&' + rangeQS()).then(function (j) {
+      if (gen !== GEN) return;
+      ROWS = ROWS.map(function (r) { return r.token === token ? j.row : r; }); draw();
+    });
   }
 
   function bar(c) {
@@ -63,9 +98,10 @@
     var lo = c.low ? '<i class="glo" style="left:' + (c.low / max * 100) + '%"></i>' : '';
     return '<div class="gbar"><div class="gfill ' + c.status + '" style="width:' + w + '%"></div>' + lo + '<i class="gmark" style="left:' + g + '%"></i></div>';
   }
+  function goalTxt(c) { return c.low ? fmt(c.low, c.unit) + ' to ' + fmt(c.goal, c.unit) : fmt(c.goal, c.unit); }
+  function stPill(s) { return '<span class="pill ' + (s === 'none' ? 'early' : s) + '">' + (s === 'none' ? 'Too early' : WORD[s]) + '</span>'; }
   function check(c) {
-    var goal = c.low ? fmt(c.low, c.unit) + ' to ' + fmt(c.goal, c.unit) : fmt(c.goal, c.unit);
-    return '<div class="chk"><div class="cl">' + esc(c.label) + '</div><div class="cv"><b>' + fmt(c.actual, c.unit) + '</b><span>goal ' + goal + '</span><span class="pill ' + (c.status === 'none' ? 'early' : c.status) + '">' + (c.status === 'none' ? 'Too early' : WORD[c.status]) + '</span></div>' + bar(c) + '</div>';
+    return '<div class="chk"><div class="cl">' + esc(c.label) + '</div><div class="cv"><b>' + fmt(c.actual, c.unit) + '</b><span>goal ' + goalTxt(c) + '</span>' + stPill(c.status) + '</div>' + bar(c) + '</div>';
   }
   function details(r) {
     var out = '';
@@ -73,46 +109,73 @@
     var bt = Object.keys(r.by_type || {});
     if (bt.length) out += '<h3>Spend by campaign type</h3><div class="chips">' + bt.map(function (k) { return '<span class="chip">' + esc(k) + ' <b>' + money(r.by_type[k]) + '</b></span>'; }).join('') + '</div>';
     if (r.actions && r.actions.length) {
-      out += '<h3>Conversions</h3><div class="tw"><table class="t"><thead><tr><th><button>Conversion action</button></th><th class="n"><button>Last 30 days</button></th><th class="n"><button>Previous 30</button></th><th><button>Counted as</button></th></tr></thead><tbody>' +
+      out += '<h3>Conversions</h3><div class="tw"><table class="t"><thead><tr><th><button>Conversion action</button></th><th class="n"><button>This range</button></th><th class="n"><button>Previous</button></th><th><button>Counted as</button></th></tr></thead><tbody>' +
         r.actions.map(function (a) { return '<tr><td class="nm"><b>' + esc(a.name) + '</b></td><td class="n">' + int(a.cur) + '</td><td class="n">' + int(a.prev) + '</td><td>' + (a.focus ? '<span class="pill good">Main result</span>' : a.watch ? '<span class="pill warn">Watching</span>' : '<span class="mut">Not counted</span>') + '</td></tr>'; }).join('') + '</tbody></table></div>';
     }
-    if (r.missing_conversions && r.missing_conversions.length) out += '<p class="warnline">No activity found for: ' + r.missing_conversions.map(esc).join(', ') + '. Check the spelling against Goals, Conversions in Google Ads, or it may simply have had none in 30 days.</p>';
+    if (r.missing_conversions && r.missing_conversions.length) out += '<p class="warnline">No activity found for: ' + r.missing_conversions.map(esc).join(', ') + '. Check the spelling against Goals, Conversions in Google Ads, or it may simply have had none in this range.</p>';
     if (r.campaigns && r.campaigns.length) {
       out += '<h3>Campaigns</h3><div class="tw"><table class="t"><thead><tr><th><button>Campaign</button></th><th class="n"><button>Spend</button></th><th class="n"><button>' + esc(r.label) + '</button></th><th class="n"><button>Cost each</button></th></tr></thead><tbody>' +
         r.campaigns.map(function (c) { return '<tr><td class="nm"><b>' + esc(c.name) + '</b><br><span class="tag">' + esc(c.type) + '</span></td><td class="n">' + money(c.spend) + '</td><td class="n">' + int(c.res) + '</td><td class="n">' + money2(c.cpa) + '</td></tr>'; }).join('') + '</tbody></table></div>';
     }
     return '<div class="det">' + out + '</div>';
   }
+  function links(r) { return '<a class="mbtn" href="' + esc(r.report_url) + '" target="_blank" rel="noopener">Report</a><a class="obtn" href="' + esc(r.ads_url) + '" target="_blank" rel="noopener">Google Ads</a><a class="obtn" href="/admin#' + esc(r.token) + '">Goals</a>'; }
+  function upd(r) { return r.updated ? new Date(r.updated).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''; }
   function card(r) {
-    var links = '<a class="mbtn" href="' + esc(r.report_url) + '" target="_blank" rel="noopener">Client report</a><a class="obtn" href="' + esc(r.ads_url) + '" target="_blank" rel="noopener">Google Ads</a><a class="obtn" href="/admin#' + esc(r.token) + '">Edit goals</a>';
     if (r.missing) {
-      return '<article class="panel crow"><div class="ctop"><div><h2>' + esc(r.name) + '</h2><p class="sub">' + esc(r.customer_id) + ' · ' + esc(r.why) + '</p></div><span class="pill early">No data yet</span></div><div class="cbtns"><button type="button" class="mbtn" data-load="' + esc(r.token) + '">Load now</button>' + links + '</div></article>';
+      return '<article class="panel crow miss"><div class="ctop"><div><h2>' + esc(r.name) + '</h2><p class="sub">' + esc(r.customer_id) + ' · ' + esc(r.why) + '</p></div><span class="pill early">' + (r.loading ? 'Loading' : 'No data yet') + '</span></div><div class="cbtns">' + (r.loading ? '' : '<button type="button" class="mbtn" data-load="' + esc(r.token) + '">Load now</button>') + links(r) + '</div></article>';
     }
-    var upd = r.updated ? new Date(r.updated).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
-    var head = '<div class="ctop"><div><h2>' + esc(r.name) + '</h2><p class="sub">' + esc(r.customer_id) + (upd ? ' · updated ' + esc(upd) : '') + '</p></div><span class="pill big ' + (r.overall === 'none' ? 'early' : r.overall) + '">' + WORD[r.overall] + '</span></div>';
-    var nums = '<div class="nums"><div><span>Spend</span><b>' + money(r.spend) + '</b><em>' + chg(r.spend, r.prev.spend) + '</em></div><div><span>' + esc(r.label) + '</span><b>' + int(r.results) + '</b><em>' + chg(r.results, r.prev.results) + '</em></div><div><span>Cost each</span><b>' + money2(r.cpa) + '</b><em>' + (r.cpa && r.prev.cpa ? chg(r.cpa, r.prev.cpa) : '') + '</em></div></div>';
+    var head = '<div class="ctop"><div><h2>' + esc(r.name) + '</h2><p class="sub">' + esc(r.customer_id) + (upd(r) ? ' · updated ' + esc(upd(r)) : '') + '</p></div><span class="pill big ' + (r.overall === 'none' ? 'early' : r.overall) + '">' + WORD[r.overall] + '</span></div>';
+    var nums = '<div class="nums"><div><span>Spend</span><b>' + money(r.spend) + '</b>' + chg(r.spend, r.prev.spend) + '</div><div><span>' + esc(r.label) + '</span><b>' + int(r.results) + '</b>' + chg(r.results, r.prev.results) + '</div><div><span>Cost each</span><b>' + money2(r.cpa) + '</b>' + (r.cpa && r.prev.cpa ? chg(r.cpa, r.prev.cpa, true) : '') + '</div></div>';
     var checks = r.checks.length ? '<div class="checks">' + r.checks.map(check).join('') + '</div>' : '<p class="msg small">No goals yet. <a href="/admin#' + esc(r.token) + '">Add goals</a> to see how this client lines up.</p>';
     var open = !!OPEN[r.token];
-    return '<article class="panel crow">' + head + nums + checks + '<div class="cbtns">' + links + '<button type="button" class="obtn" data-open="' + esc(r.token) + '" aria-expanded="' + open + '">' + (open ? 'Hide details' : 'Details') + '</button></div>' + (open ? details(r) : '') + '</article>';
+    return '<article class="panel crow' + (open ? ' open' : '') + '">' + head + nums + checks + '<div class="cbtns">' + links(r) + '<button type="button" class="obtn" data-open="' + esc(r.token) + '" aria-expanded="' + open + '">' + (open ? 'Hide details' : 'Details') + '</button></div>' + (open ? details(r) : '') + '</article>';
+  }
+  function cell(r, keys) {
+    var cs = r.checks.filter(function (c) { return keys.some(function (k) { return c.key === k || c.key.indexOf(k + '-') === 0; }); });
+    if (!cs.length) return '<span class="mut">n/a</span>';
+    return cs.map(function (c) { return '<div class="tc"><b class="' + c.status + '">' + fmt(c.actual, c.unit) + '</b> <span>/ ' + goalTxt(c) + (c.key === 'volw' ? ' a week' : c.key === 'vol' ? ' a month' : '') + (c.key.indexOf('spend-') === 0 ? ' ' + esc(c.label.replace(' spend per 30 days', '')) : '') + '</span></div>'; }).join('');
+  }
+  function table(rows) {
+    var h = '<div class="panel tpanel"><div class="tw"><table class="t tt"><thead><tr>' + ['Client', 'Status', 'Spend', 'Results', 'Cost each', 'Cost goal', 'Spend goal (per 30 days)', 'Volume goal', ''].map(function (x, i) { return '<th class="' + (i >= 2 && i <= 4 ? 'n' : '') + '"><button>' + x + '</button></th>'; }).join('') + '</tr></thead><tbody>';
+    h += rows.map(function (r) {
+      if (r.missing) return '<tr><td class="nm"><a href="' + esc(r.report_url) + '" target="_blank" rel="noopener"><b>' + esc(r.name) + '</b></a></td><td><span class="pill early">' + (r.loading ? 'Loading' : 'No data yet') + '</span></td><td colspan="6" class="mut">' + esc(r.why) + '</td><td class="tl"><div>' + (r.loading ? '' : '<button type="button" class="obtn sm" data-load="' + esc(r.token) + '">Load</button>') + '</div></td></tr>';
+      return '<tr><td class="nm"><a href="' + esc(r.report_url) + '" target="_blank" rel="noopener"><b>' + esc(r.name) + '</b></a><br><span class="tag">' + esc(r.label) + '</span></td>' +
+        '<td><span class="pill ' + (r.overall === 'none' ? 'early' : r.overall) + '">' + WORD[r.overall] + '</span></td>' +
+        '<td class="n">' + money(r.spend) + '<br>' + chg(r.spend, r.prev.spend) + '</td>' +
+        '<td class="n">' + int(r.results) + '<br>' + chg(r.results, r.prev.results) + '</td>' +
+        '<td class="n">' + money2(r.cpa) + '<br>' + (r.cpa && r.prev.cpa ? chg(r.cpa, r.prev.cpa, true) : '') + '</td>' +
+        '<td>' + cell(r, ['cpa', 'roas']) + '</td><td>' + cell(r, ['spend']) + '</td><td>' + cell(r, ['vol', 'volw']) + '</td>' +
+        '<td class="tl"><div><a class="obtn sm" href="' + esc(r.ads_url) + '" target="_blank" rel="noopener">Ads</a><a class="obtn sm" href="/admin#' + esc(r.token) + '">Goals</a></div></td></tr>';
+    }).join('');
+    return h + '</tbody></table></div></div>';
   }
   function draw() {
-    var rows = DATA.clients.slice().sort(function (a, b) { return ORDER[a.overall] - ORDER[b.overall] || (b.spend || 0) - (a.spend || 0); });
-    var n = { good: 0, warn: 0, bad: 0, none: 0 }, spend = 0;
-    rows.forEach(function (r) { n[r.overall]++; spend += r.spend || 0; });
-    $('sum').innerHTML = '<div class="kpi"><div class="l">Spend, last 30 days</div><div class="v">' + money(spend) + '</div></div>' +
-      ['bad', 'warn', 'good', 'none'].map(function (k) { return '<button type="button" class="kpi sk ' + k + (FILT === k ? ' on' : '') + '" data-f="' + k + '"><div class="l">' + WORD[k] + '</div><div class="v">' + n[k] + '</div></button>'; }).join('');
-    var f = $('filt'); f.hidden = false;
-    f.innerHTML = [['all', 'All'], ['bad', 'Off track'], ['warn', 'Watch'], ['good', 'On track']].map(function (o) { return '<button type="button" data-f="' + o[0] + '" class="' + (FILT === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('');
+    var rows = ROWS.slice().sort(function (a, b) { return ORDER[a.overall] - ORDER[b.overall] || (b.spend || 0) - (a.spend || 0); });
+    var n = { good: 0, warn: 0, bad: 0, none: 0 }, spend = 0, rng = null;
+    rows.forEach(function (r) { n[r.overall]++; spend += r.spend || 0; if (!rng && r.range) rng = r.range; });
+    $('tsub').textContent = (rng ? dlab(rng.from) + ' to ' + dlab(rng.to) + '. ' : '') + 'Checked against each client\'s goals. Monthly goals are compared with the pace per 30 days.';
+    $('sum').innerHTML = '<div class="kpi"><div class="l">Total spend</div><div class="v">' + money(spend) + '</div></div>' +
+      ['bad', 'warn', 'good', 'none'].map(function (k) { return '<button type="button" class="kpi sk ' + k + (FILT === k ? ' on' : '') + '" data-f="' + k + '" aria-pressed="' + (FILT === k) + '"><div class="l">' + WORD[k] + '</div><div class="v">' + n[k] + '</div></button>'; }).join('');
     var show = rows.filter(function (r) { return FILT === 'all' || r.overall === FILT; });
-    $('list').innerHTML = show.length ? show.map(card).join('') : '<div class="panel"><p class="msg">No clients in this group.</p></div>';
+    var L = $('list'); L.className = 'clist ' + VIEW;
+    L.innerHTML = !show.length ? '<div class="panel"><p class="msg">No clients in this group. Click the box again to show everyone.</p></div>' : VIEW === 'table' ? table(show) : show.map(card).join('');
+    $('foot').textContent = INACTIVE ? INACTIVE + ' inactive client' + (INACTIVE === 1 ? ' is' : 's are') + ' hidden. Manage them on the Edit clients and goals page.' : '';
   }
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-f],[data-open],[data-load]'); if (!t) return;
+    var t = e.target.closest('[data-f],[data-open],[data-load],[data-r],[data-v]'); if (!t) return;
     if (t.dataset.f) { FILT = FILT === t.dataset.f ? 'all' : t.dataset.f; return draw(); }
     if (t.dataset.open) { OPEN[t.dataset.open] = !OPEN[t.dataset.open]; return draw(); }
+    if (t.dataset.v) { VIEW = t.dataset.v; try { localStorage.setItem(VKEY, VIEW); } catch (er) { /* ignore */ } controls(); return draw(); }
+    if (t.dataset.r) {
+      RANGE.mode = t.dataset.r;
+      if (RANGE.mode === 'custom' && !RANGE.from) { var d = new Date(Date.now() - 864e5); RANGE.to = d.toISOString().slice(0, 10); RANGE.from = new Date(d.getTime() - 29 * 864e5).toISOString().slice(0, 10); $('cfrom').value = RANGE.from; $('cto').value = RANGE.to; controls(); return; }
+      return load();
+    }
     if (t.dataset.load) {
-      t.disabled = true; t.textContent = 'Loading, up to a minute';
-      fetch('/api/report?k=' + encodeURIComponent(t.dataset.load) + '&days=30').then(function () { load(); }, function () { load(); });
+      var tok = t.dataset.load; t.disabled = true; t.textContent = 'Loading';
+      ROWS = ROWS.map(function (r) { return r.token === tok ? Object.assign({}, r, { loading: true, why: 'Loading, up to a minute' }) : r; }); draw();
+      fetchOne(tok, GEN).catch(function (er) { ROWS = ROWS.map(function (r) { return r.token === tok ? Object.assign({}, r, { loading: false, why: er.message || 'Failed' }) : r; }); draw(); });
     }
   });
   load();

@@ -115,7 +115,7 @@ Google has listed two known problems on its side: brand verification being rejec
 Add one more setting in Netlify (Site configuration, Environment variables): `ADMIN_PASSWORD`, any password you like (mark it as secret). Until you add it, the pages accept your `REFRESH_SECRET` instead.
 
 - **`/admin`** (for example `https://vpm-dashboard.netlify.app/admin`): add clients, change budgets, goals, notes and time zones, turn a report off, copy a client's link. Saving takes effect within a minute and refreshes that client's report in the background. No GitHub, no redeploy. The first save copies the list from `clients.json` into Netlify storage, and from then on this page is the source of truth (editing `clients.json` no longer changes anything).
-- **`/team`**: every client on one page for the last 30 days, sorted with the clients that are off track first. Each card shows spend, results and cost each against the goals, with buttons for the client report, the account in Google Ads, and the goal editor. **Details** shows spend by campaign type, every conversion action (main, watched or not counted) and the campaigns.
+- **`/team`**: every active client on one page (7, 30 or 90 days, or a custom range; Cards or Table view), sorted with the clients that are off track first. Each card shows spend, results and cost each against the goals, with buttons for the client report, the account in Google Ads, and the goal editor. **Details** shows spend by campaign type, every conversion action (main, watched or not counted) and the campaigns.
 
 Both pages ask for the password once per browser.
 
@@ -231,6 +231,7 @@ After a deploy, Netlify also builds `dist/ghl-embed.html`. It is the same report
 
 ## Version notes
 
+- **1.6**: team dashboard shows cards three across on wide screens, a Table view, and 7, 30, 90 day or custom date ranges (custom ranges load live, a few clients at a time); admin page has an Active client switch, with inactive clients in their own list, their report links off and hidden from the team dashboard.
 - **1.5**: equal 14px gaps; Trends and Audiences tabs removed (age, gender and device now sit inside each campaign); at most 2 recommended actions; goals for 7 clients; goal ranges like 200-300, spend goals by campaign type, weekly result goals, watched conversions; `/admin` editor and `/team` dashboard; conversion names match regardless of dash style.
 - **1.4**: real gaps between boxes and less padding inside them; phone menu is now a Menu button; compact controls on phones; campaign Audiences section is short (5 at a time) and sits last; paused campaigns are hidden unless `include_paused` is set; per-client `goals` with a Goals panel on the Overview.
 - **1.3**: clean links backed up with `_redirects` and `404.html`; more vertical spacing; client name above the page title; "Updated" time under the client name in the menu; the video popup works again (the site now sends a referrer, which YouTube requires, `Referrer-Policy` in `netlify.toml`); clicking an ad opens its landing page in a popup; keywords and search terms show 8 per page, ads show 10 per page.

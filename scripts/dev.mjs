@@ -14,8 +14,8 @@ process.env.VPM_DEV = '1';
 process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'dev';
 // Sample 30-day data for each client so the team dashboard has something to show locally.
 {
-  const to = addDays(new Date().toISOString().slice(0, 10), -1), from = addDays(to, -29);
-  loadClients({}).forEach((c, i) => { if (i % 4 !== 3) cachePut(latestKey(c.token), { saved_at: Date.now(), payload: demoReport(i % 2 ? 'demo' : 'demo-calls', from, to, 0.4 + i * 0.25) }); });
+  const to = addDays(new Date().toISOString().slice(0, 10), -1);
+  for (const days of [7, 30, 90]) loadClients({}).forEach((c, i) => { if (i % 4 !== 3) cachePut(latestKey(c.token, days), { saved_at: Date.now(), payload: demoReport(i % 2 ? 'demo' : 'demo-calls', addDays(to, -(days - 1)), to) }); });
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');

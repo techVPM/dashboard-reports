@@ -47,7 +47,7 @@ export default async (req) => {
   try {
     const payload = await buildReport({ client, from: r.from, to: r.to });
     await cachePut(key, { saved_at: Date.now(), payload });
-    if (!url.searchParams.get('from') && r.to < r.today && payload.meta.range.days === 30) await cachePut(latestKey(client.token), { saved_at: Date.now(), payload });
+    if (!url.searchParams.get('from') && r.to < r.today && [7, 30, 90].includes(payload.meta.range.days)) await cachePut(latestKey(client.token, payload.meta.range.days), { saved_at: Date.now(), payload });
     return json(payload);
   } catch (e) {
     console.error('report failed', client.name, e.message, e.detail || '');

@@ -54,9 +54,12 @@
     }).catch(function (e) { if (e && e.auth) gate('That password did not work.'); else alert(e.message); });
   }
   function drawList() {
-    $('clist').innerHTML = LIST.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (c) {
-      return '<li><button type="button" data-pick="' + esc(c.token) + '" class="' + (CUR && CUR.token === c.token && ORIG ? 'on' : '') + '">' + esc(c.name) + (c.disabled ? ' <span class="pill early">Off</span>' : '') + '<small>' + esc(c.customer_id) + '</small></button></li>';
-    }).join('');
+    function item(c) { return '<li><button type="button" data-pick="' + esc(c.token) + '" class="' + (CUR && CUR.token === c.token && ORIG ? 'on' : '') + '">' + esc(c.name) + '<small>' + esc(c.customer_id) + '</small></button></li>'; }
+    var srt = LIST.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+    var act = srt.filter(function (c) { return !c.disabled; }), ina = srt.filter(function (c) { return c.disabled; });
+    var openIna = CUR && CUR.disabled && ORIG;
+    $('clist').innerHTML = '<li><h3>Active (' + act.length + ')</h3></li>' + act.map(item).join('') +
+      (ina.length ? '<li><details' + (openIna ? ' open' : '') + '><summary>Inactive (' + ina.length + ')</summary><ul class="inact">' + ina.map(item).join('') + '</ul></details></li>' : '');
   }
   function val(id) { var el = $(id); return el ? el.value.trim() : ''; }
   function numv(id) { var v = val(id).replace(/[$,]/g, ''); return v === '' ? undefined : Number(v); }
@@ -76,12 +79,12 @@
       '<div class="fhead"><h2>' + (ORIG ? esc(CUR.name) : 'New client') + '</h2>' + (link ? '<a class="obtn" href="' + esc(link) + '" target="_blank" rel="noopener">Open report</a>' : '') + '</div>' +
       (link ? '<p class="linkline">Client link: <b>' + esc(link) + '</b> <button type="button" class="tlink" data-copy="' + esc(link) + '">Copy</button></p>' : '') +
       '<fieldset><legend>Account</legend><div class="fgrid">' +
+        '<label class="activebox"><input type="checkbox" id="f_active"' + (CUR.disabled ? '' : ' checked') + '><span><b>Active client</b><br><small>Untick when you stop working with them. Their report link turns off and they move to the Inactive list and off the team dashboard. Tick again to bring everything back.</small></span></label>' +
         f('Client name', 'f_name', CUR.name) +
         f('Google Ads ID', 'f_cid', CUR.customer_id, 'Like 123-456-7890') +
         f('Link key', 'f_tok', CUR.token, 'Leave blank to use the name plus the last 4 digits. Changing it breaks the old link.') +
         '<label class="fld"><span>Time zone of the Ads account</span><select id="f_tz">' + TZ.map(function (z) { return '<option value="' + z[0] + '"' + ((CUR.timezone || 'America/Denver') === z[0] ? ' selected' : '') + '>' + z[1] + '</option>'; }).join('') + '</select></label>' +
         '<label class="chkl"><input type="checkbox" id="f_paused"' + (CUR.include_paused ? ' checked' : '') + '> Show paused campaigns</label>' +
-        '<label class="chkl"><input type="checkbox" id="f_off"' + (CUR.disabled ? ' checked' : '') + '> Turn this report off</label>' +
       '</div></fieldset>' +
       '<fieldset><legend>Goals</legend><div class="fgrid">' +
         f('Target cost per conversion', 'g_cpa', g.cost_per_conversion, 'A number like 250, or a range like 200-300') +
@@ -112,7 +115,7 @@
     c.name = val('f_name'); c.customer_id = val('f_cid'); c.token = val('f_tok') || slug(c.name, c.customer_id);
     c.timezone = val('f_tz');
     if ($('f_paused').checked) c.include_paused = true;
-    if ($('f_off').checked) c.disabled = true;
+    if (!$('f_active').checked) c.disabled = true; else delete c.disabled;
     var g = {}, cpa = val('g_cpa');
     if (cpa) g.cost_per_conversion = /\d\s*(-|to)\s*\$?\d/.test(cpa) ? cpa : Number(cpa.replace(/[$,]/g, ''));
     if (val('g_lbl')) g.result_label = val('g_lbl');
@@ -146,7 +149,7 @@
     if (t.dataset.new) return edit(null);
     if (t.dataset.copy) { try { navigator.clipboard.writeText(t.dataset.copy); t.textContent = 'Copied'; } catch (er) { /* ignore */ } return; }
     if (t.dataset.del) {
-      if (!confirm('Delete ' + CUR.name + '? Their link stops working. To pause a report instead, tick "Turn this report off".')) return;
+      if (!confirm('Delete ' + CUR.name + '? Their link stops working. To keep them but hide them, untick Active client instead.')) return;
       api('/api/admin', { method: 'POST', body: JSON.stringify({ action: 'delete', token: ORIG }) }).then(function (j) { LIST = j.clients; CUR = null; edit(LIST[0] || null); }).catch(function (er) { msg('ferr', er.message); });
     }
   });

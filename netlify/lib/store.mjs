@@ -72,5 +72,5 @@ function match(list, token) {
 }
 export async function findClientAsync(token, env = process.env) { return match(await getClients(env), token); }
 
-// Latest 30-day report per client, for the team dashboard.
-export const latestKey = (token) => 'latest30/' + token;
+// Latest 7, 30 and 90 day report per client, for the team dashboard.
+export const latestKey = (token, days = 30) => 'latest' + days + '/' + token;
