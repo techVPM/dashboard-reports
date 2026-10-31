@@ -2,12 +2,29 @@
   {
     "token": "ampleo-0373",
     "name": "Ampleo",
-    "customer_id": "724-430-0373"
+    "customer_id": "724-430-0373",
+    "goals": {
+      "spend_by_type": {
+        "video": 6000
+      },
+      "note": "Goal: invest about $6,000 a month in YouTube."
+    }
   },
   {
     "token": "axomo-1580",
     "name": "Axomo",
-    "customer_id": "659-889-1580"
+    "customer_id": "659-889-1580",
+    "goals": {
+      "cost_per_conversion": 250,
+      "focus_conversions": [
+        "Book A Demo - Thank You Page (ME)"
+      ],
+      "result_label": "Booked demos",
+      "spend_by_type": {
+        "video": 6000
+      },
+      "note": "Goal: qualified booked demos for $250 or less each."
+    }
   },
   {
     "token": "coach-by-chris-1613",
@@ -22,15 +39,23 @@
     "labels": {
       "calls": "Booked calls"
     },
-    "targets": {
-      "cpc": null
-    },
     "notes": [],
     "actions": [],
     "term_groups": {
       "Brand and brand-adjacent": "chris|shatek|coach by chris|freedom from alcohol",
       "AA and 12-step seekers": "\\baa\\b|anonymous|12 step|twelve step|sponsor",
       "Treatment, hotline and rehab": "hotline|helpline|rehab|detox|treatment|outpatient"
+    },
+    "goals": {
+      "cost_per_conversion": "200-300",
+      "focus_conversions": [
+        "Booked Call"
+      ],
+      "result_label": "Booked calls",
+      "spend_by_type": {
+        "video": 7500
+      },
+      "note": "Goal: qualified booked calls for $200 to $300 each."
     }
   },
   {
@@ -42,21 +67,73 @@
     "token": "real-property-management-4421",
     "name": "Real Property Management",
     "customer_id": "959-824-4421",
-    "timezone": "America/New_York"
+    "timezone": "America/New_York",
+    "goals": {
+      "cost_per_conversion": 250,
+      "focus_conversions": [
+        "MQL - MP Offline Conversions - LEADS feed"
+      ],
+      "result_label": "Leads",
+      "secondary_conversions": [
+        "Landlord signed lease"
+      ],
+      "spend_by_type": {
+        "video": 10000,
+        "search+pmax": 30000
+      },
+      "note": "Goal: leads for $250 or less each."
+    }
   },
   {
     "token": "mattress-makers-9653",
     "name": "Mattress Makers",
-    "customer_id": "160-436-9653"
+    "customer_id": "160-436-9653",
+    "goals": {
+      "cost_per_conversion": "200-800",
+      "focus_conversions": [
+        "Store visits"
+      ],
+      "result_label": "Store visits",
+      "weekly_conversions": 70,
+      "monthly_spend": 8000,
+      "secondary_conversions": [
+        "Google Shopping App Purchase",
+        "Calls from ads",
+        "Add to cart",
+        "Begin checkout"
+      ],
+      "note": "Goal: 70 store visits a week."
+    },
+    "conversion_field": "all_conversions"
   },
   {
     "token": "sandler-7469",
     "name": "Sandler",
-    "customer_id": "306-924-7469"
+    "customer_id": "306-924-7469",
+    "goals": {
+      "cost_per_conversion": 25,
+      "focus_conversions": [
+        "vpm_signup"
+      ],
+      "result_label": "Leads",
+      "monthly_spend": 800,
+      "note": "Goal: form submissions for $25 or less each."
+    }
   },
   {
     "token": "the-scalable-company-7074",
     "name": "The Scalable Company",
-    "customer_id": "626-453-7074"
+    "customer_id": "626-453-7074",
+    "goals": {
+      "cost_per_conversion": 25,
+      "focus_conversions": [
+        "HubSpot - Customer",
+        "HubSpot - Sales Qualified Lead",
+        "HubSpot - Marketing Qualified Lead"
+      ],
+      "result_label": "Qualified leads",
+      "monthly_spend": 12500,
+      "note": "Goal: qualified leads and customers. New customers matter most."
+    }
   }
 ]

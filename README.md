@@ -110,6 +110,15 @@ After saving the settings, go to **Deploys, Trigger deploy, Deploy site**. Then 
 
 Google has listed two known problems on its side: brand verification being rejected for projects on a free trial or with suspended billing, and some freshly upgraded projects getting `AUTHORIZATION_ERROR` on live accounts while a fix rolls out. Both show up in the message above.
 
+## Part 3e. Team pages: /admin and /team
+
+Add one more setting in Netlify (Site configuration, Environment variables): `ADMIN_PASSWORD`, any password you like (mark it as secret). Until you add it, the pages accept your `REFRESH_SECRET` instead.
+
+- **`/admin`** (for example `https://vpm-dashboard.netlify.app/admin`): add clients, change budgets, goals, notes and time zones, turn a report off, copy a client's link. Saving takes effect within a minute and refreshes that client's report in the background. No GitHub, no redeploy. The first save copies the list from `clients.json` into Netlify storage, and from then on this page is the source of truth (editing `clients.json` no longer changes anything).
+- **`/team`**: every client on one page for the last 30 days, sorted with the clients that are off track first. Each card shows spend, results and cost each against the goals, with buttons for the client report, the account in Google Ads, and the goal editor. **Details** shows spend by campaign type, every conversion action (main, watched or not counted) and the campaigns.
+
+Both pages ask for the password once per browser.
+
 ## Part 4. Add clients
 
 Open `clients.json`. Each client is one block (see `clients.example.json` for every option):
@@ -131,6 +140,8 @@ Open `clients.json`. Each client is one block (see `clients.example.json` for ev
 - `outcomes`: **this is the important one.** It says which Google conversion actions count as a result. Use the exact names from the account's Goals, Conversions list. You can use any of `leads`, `calls`, `deals`. Anything not listed (logins, extra video views and so on) is still shown as "Conversions (Google)" but is not counted as a result. The report calls out the gap for you.
   - If you leave `outcomes` out, every Google conversion counts as a lead.
 - `deal_value`: optional. Average sale value. If `deals` are listed, revenue and ROAS use the real conversion value when Google has one, otherwise deals times this number.
+- `goals`: optional. The easiest way to tell the report what a client is aiming for (see **Client goals** below).
+- `include_paused`: optional. Set to `true` to show paused campaigns for this client. By default every report shows only campaigns that are currently enabled, and spend from paused campaigns is left out of the totals.
 - `targets`: optional. `cpl`, `cpc` (cost per booked call), `roas`, `breakeven`. Without targets the report compares campaigns with the account's own average.
 - `notes`: optional. Text that shows at the top of the Insights page as "From your Video Power Marketing team".
 - `actions`: optional. Your own recommended actions. They are listed first.
@@ -154,6 +165,34 @@ These clients are already in `clients.json`:
 Put your site address in front, for example `https://vpm-dashboard.netlify.app/coach-by-chris-1613`. Only Coach by Chris has its booked-call settings so far. The others count every Google conversion as a result until you add `outcomes` for them. Time zones default to Mountain, except Coach by Chris and Real Property Management, which are Eastern.
 
 To change clients without redeploying, you can instead paste the whole list into a Netlify setting called `CLIENTS_JSON`. If that setting exists it is used instead of the file.
+
+### Client goals
+
+Add a `goals` block to a client. Every field is optional:
+
+```json
+"goals": {
+  "cost_per_conversion": 150,
+  "focus_conversions": ["Booked Call", "Lead - Form"],
+  "result_label": "Booked calls",
+  "roas": 4,
+  "monthly_conversions": 40,
+  "monthly_spend": 12000,
+  "note": "Goal: under $150 per booked call."
+}
+```
+
+- `cost_per_conversion`: the most we want to pay for one result, or a range such as `"200-300"`.
+- `spend_by_type`: monthly spend goals by campaign type, for example `{ "video": 10000, "search+pmax": 30000 }`. Types: video, search, pmax, shopping, display.
+- `weekly_conversions`: results per week.
+- `secondary_conversions`: conversion actions to watch on the team dashboard without counting them as results. Cost colors (green, amber, red) in every table now compare against this number.
+- `focus_conversions`: the exact Google conversion action names that count as the main result. Used when the client has no `outcomes` block.
+- `result_label`: what to call those results (Leads, Booked calls, Sales).
+- `roas`: target return on ad spend, for clients with revenue.
+- `monthly_conversions` and `monthly_spend`: a monthly volume and budget goal. The report shows the current pace per 30 days against them.
+- `note`: one sentence shown under the goals.
+
+A **Goals** panel appears on the Overview with each goal, the actual number and a green, amber or red status.
 
 ## Part 5. The daily 10 am refresh
 
@@ -192,6 +231,8 @@ After a deploy, Netlify also builds `dist/ghl-embed.html`. It is the same report
 
 ## Version notes
 
+- **1.5**: equal 14px gaps; Trends and Audiences tabs removed (age, gender and device now sit inside each campaign); at most 2 recommended actions; goals for 7 clients; goal ranges like 200-300, spend goals by campaign type, weekly result goals, watched conversions; `/admin` editor and `/team` dashboard; conversion names match regardless of dash style.
+- **1.4**: real gaps between boxes and less padding inside them; phone menu is now a Menu button; compact controls on phones; campaign Audiences section is short (5 at a time) and sits last; paused campaigns are hidden unless `include_paused` is set; per-client `goals` with a Goals panel on the Overview.
 - **1.3**: clean links backed up with `_redirects` and `404.html`; more vertical spacing; client name above the page title; "Updated" time under the client name in the menu; the video popup works again (the site now sends a referrer, which YouTube requires, `Referrer-Policy` in `netlify.toml`); clicking an ad opens its landing page in a popup; keywords and search terms show 8 per page, ads show 10 per page.
 - **1.2**: video popup, wins and grouped insights, paging, client list, clean links.
 

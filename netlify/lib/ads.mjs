@@ -2,6 +2,8 @@
 // Talks to the Google Ads API directly through the VPM manager account (MCC).
 // No connector, no per-account limit: any client account under the MCC can be reported on.
 
+import { applyGoals } from './goals.mjs';
+
 const DAY = 864e5;
 export const addDays = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * DAY).toISOString().slice(0, 10);
 export const daysBetween = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / DAY);
@@ -242,14 +244,19 @@ export const ITEM_SPECS = [
 
 const dateWhere = (a, b) => `segments.date BETWEEN '${a}' AND '${b}'`;
 
-export function baseQuery(spec, from, to) {
+// Paused (and removed) campaigns are left out unless the client has include_paused set.
+export const statusWhere = (client) => (client && client.include_paused ? '' : "campaign.status = 'ENABLED'");
+
+export function baseQuery(spec, from, to, statusClause = '') {
   const where = [dateWhere(from, to), 'metrics.impressions > 0'];
+  if (statusClause) where.push(statusClause);
   if (spec.extraWhere) where.push(spec.extraWhere);
   return `SELECT ${spec.fields.join(', ')}, ${spec.video ? MV : MX} FROM ${spec.from} WHERE ${where.join(' AND ')}` +
     (spec.order ? ` ORDER BY metrics.cost_micros DESC LIMIT ${spec.limit}` : '');
 }
-export function splitQuery(spec, from, to, convField) {
+export function splitQuery(spec, from, to, convField, statusClause = '') {
   const where = [dateWhere(from, to), `metrics.${convField} > 0`];
+  if (statusClause) where.push(statusClause);
   if (spec.extraWhere) where.push(spec.extraWhere);
   return `SELECT ${spec.keyFields.join(', ')}, segments.conversion_action_name, metrics.${convField}, metrics.${convField}_value FROM ${spec.from} WHERE ${where.join(' AND ')}`;
 }
@@ -258,13 +265,16 @@ export function splitQuery(spec, from, to, convField) {
 /* Report builder                                                       */
 /* ------------------------------------------------------------------ */
 
+// Conversion names match without regard to capitals, extra spaces or the kind of dash used.
+export const normName = (n) => String(n || '').toLowerCase().replace(/[\u2010-\u2015\u2212]/g, '-').replace(/\s+/g, ' ').trim();
+
 // Which outcome does a Google conversion action name count as?
 export function makeClassifier(outcomes) {
   const map = new Map();
   for (const role of ['leads', 'calls', 'deals']) {
-    for (const n of outcomes?.[role] || []) map.set(String(n).trim().toLowerCase(), role);
+    for (const n of outcomes?.[role] || []) map.set(normName(n), role);
   }
-  return { configured: map.size > 0, roles: (n) => map.get(String(n || '').trim().toLowerCase()) || null };
+  return { configured: map.size > 0, roles: (n) => map.get(normName(n)) || null };
 }
 
 function emptyAgg() {
@@ -298,7 +308,8 @@ async function settle(label, promise, warnings) {
   try { return await promise; } catch (e) { warnings.push(label + ': ' + e.message); return null; }
 }
 
-export async function buildReport({ client, from, to, env = process.env, fetchFn = fetch, now = new Date() }) {
+export async function buildReport({ client: rawClient, from, to, env = process.env, fetchFn = fetch, now = new Date() }) {
+  const { client, goals } = applyGoals(rawClient);
   const customerId = digits(client.customer_id);
   const opts = { env, fetchFn };
   const classifier = makeClassifier(client.outcomes);
@@ -307,26 +318,28 @@ export async function buildReport({ client, from, to, env = process.env, fetchFn
   const pfrom = addDays(from, -len);
   const pto = addDays(from, -1);
   const warnings = [];
+  const sw = statusWhere(client);
+  const andSw = sw ? ' AND ' + sw : '';
 
   // Core: daily campaign rows for the previous and current period.
   const coreP = runQuery(customerId,
     `SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, segments.date, ${MV}, metrics.conversions_value ` +
-    `FROM campaign WHERE ${dateWhere(pfrom, to)} AND metrics.impressions > 0`, opts);
+    `FROM campaign WHERE ${dateWhere(pfrom, to)} AND metrics.impressions > 0${andSw}`, opts);
   const convP = classifier.configured
     ? runQuery(customerId,
-        `SELECT campaign.id, segments.date, segments.conversion_action_name, metrics.${convField}, metrics.${convField}_value FROM campaign ` +
-        `WHERE ${dateWhere(pfrom, to)} AND metrics.${convField} > 0`, opts)
+        `SELECT campaign.id, segments.date, segments.conversion_action_name, metrics.conversions, metrics.conversions_value, metrics.all_conversions, metrics.all_conversions_value FROM campaign ` +
+        `WHERE ${dateWhere(pfrom, to)} AND metrics.all_conversions > 0${andSw}`, opts)
     : Promise.resolve([]);
   const infoP = settle('impression share',
     runQuery(customerId,
       `SELECT campaign.id, campaign_budget.amount_micros, metrics.search_impression_share, metrics.search_budget_lost_impression_share, metrics.search_rank_lost_impression_share ` +
-      `FROM campaign WHERE ${dateWhere(from, to)} AND campaign.advertising_channel_type = 'SEARCH' AND metrics.impressions > 0`, opts), warnings);
+      `FROM campaign WHERE ${dateWhere(from, to)} AND campaign.advertising_channel_type = 'SEARCH' AND metrics.impressions > 0${andSw}`, opts), warnings);
 
   const itemPs = ITEM_SPECS.map((spec) => ({
     spec,
-    base: settle(spec.kind, runQuery(customerId, baseQuery(spec, from, to), opts), warnings),
+    base: settle(spec.kind, runQuery(customerId, baseQuery(spec, from, to, sw), opts), warnings),
     split: classifier.configured
-      ? settle(spec.kind + ' (conversion split)', runQuery(customerId, splitQuery(spec, from, to, convField), opts), warnings)
+      ? settle(spec.kind + ' (conversion split)', runQuery(customerId, splitQuery(spec, from, to, convField, sw), opts), warnings)
       : Promise.resolve(null),
   }));
 
@@ -347,16 +360,24 @@ export async function buildReport({ client, from, to, env = process.env, fetchFn
     if (!daily.has(k)) daily.set(k, { date: r.segments.date, campaign_id: cid, ...emptyAgg() });
     addMetrics(daily.get(k), r);
   }
+  const actions = new Map();
   for (const r of conv) {
-    const k = r.campaign.id + '|' + r.segments.date;
-    const d = daily.get(k);
-    if (!d) continue;
     const m = r.metrics || {};
-    const role = classifier.roles(r.segments.conversionActionName);
+    const name = r.segments.conversionActionName || '';
+    const role = classifier.roles(name);
     const c = num(m[convField]);
     const v = num(m[convField + 'Value']);
+    // per-action totals (primary or not) for the conversion breakdown
+    const a = actions.get(name) || { name, role, cur: 0, prev: 0 };
+    const cnt = Math.max(num(m.conversions), num(m.allConversions), c);
+    if (r.segments.date >= from) a.cur += cnt; else a.prev += cnt;
+    actions.set(name, a);
+    const d = daily.get(r.campaign.id + '|' + r.segments.date);
+    if (!d) continue;
     addSplit(d, role, c, v);
   }
+  const conversionActions = [...actions.values()].map((a) => ({ ...a, cur: r2(a.cur), prev: r2(a.prev) }))
+    .sort((a, b) => b.cur - a.cur).slice(0, 25);
   const dailyRows = [...daily.values()]
     .map((d) => finish(d, classifier, client.deal_value))
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
@@ -430,6 +451,9 @@ export async function buildReport({ client, from, to, env = process.env, fetchFn
         deals: client.labels?.deals || 'Sales',
       },
       targets: { cpl: client.targets?.cpl ?? null, cpc: client.targets?.cpc ?? null, roas: client.targets?.roas ?? null, breakeven: client.targets?.breakeven ?? null },
+      goals,
+      conversion_actions: conversionActions,
+      include_paused: !!client.include_paused,
       notes: client.notes || [],
       actions: client.actions || [],
       term_groups: client.term_groups || {},

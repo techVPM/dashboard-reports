@@ -4,6 +4,16 @@
   functions = "netlify/functions"
 
 [[redirects]]
+  from = "/team"
+  to = "/team.html"
+  status = 200
+
+[[redirects]]
+  from = "/admin"
+  to = "/admin.html"
+  status = 200
+
+[[redirects]]
   # Clean client links: /coach-by-chris-1613 opens the report. Real files (index.html, ghl-embed.html) still win.
   from = "/:slug"
   to = "/index.html"

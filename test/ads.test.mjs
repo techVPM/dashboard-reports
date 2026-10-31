@@ -195,3 +195,89 @@ test('each ad carries the landing page it leads to', () => {
   assert.equal(it.url, 'https://example.com/p');
   assert.equal(spec.item({ campaign: { id: '1' }, adGroupAd: { ad: { id: '9' } } }).url, '');
 });
+
+test('paused campaigns are left out of every query unless the client asks for them', async () => {
+  resetTokenCache();
+  const f = mockFetch();
+  await buildReport({ client: CLIENT, from: '2026-10-01', to: '2026-10-30', env: ENV, fetchFn: f });
+  assert.ok(f.calls.length >= 10);
+  for (const c of f.calls) assert.match(c.q, /campaign\.status = 'ENABLED'/, c.q.slice(0, 80));
+  resetTokenCache();
+  const g = mockFetch();
+  await buildReport({ client: { ...CLIENT, include_paused: true }, from: '2026-10-01', to: '2026-10-30', env: ENV, fetchFn: g });
+  for (const c of g.calls) assert.doesNotMatch(c.q, /campaign\.status = 'ENABLED'/);
+});
+
+test('goals turn into targets, counted conversions and a goals block for the page', async () => {
+  const { applyGoals, cleanGoals } = await import('../netlify/lib/goals.mjs');
+  const a = applyGoals({ name: 'G', goals: { cost_per_conversion: '120', focus_conversions: ['Lead - Form', ' Booked Call '], result_label: 'Leads', roas: 4, monthly_conversions: 50 } });
+  assert.deepEqual(a.client.outcomes, { leads: ['Lead - Form', 'Booked Call'] });
+  assert.equal(a.client.targets.cpl, 120);
+  assert.equal(a.client.targets.roas, 4);
+  assert.equal(a.client.labels.leads, 'Leads');
+  assert.equal(a.goals.monthly_conversions, 50);
+  // outcomes and targets set directly win
+  const b = applyGoals({ name: 'G', outcomes: { calls: ['Booked Call'] }, targets: { cpc: 99 }, goals: { cost_per_conversion: 120, focus_conversions: ['X'] } });
+  assert.deepEqual(b.client.outcomes, { calls: ['Booked Call'] });
+  assert.equal(b.client.targets.cpc, 99);
+  assert.equal(cleanGoals(undefined).any, false);
+  assert.equal(cleanGoals({ cost_per_conversion: 'abc', monthly_spend: -5 }).any, false);
+  resetTokenCache();
+  const r = await buildReport({ client: { name: 'G', customer_id: '1112223333', goals: { cost_per_conversion: 75, focus_conversions: ['Booked Call'] } }, from: '2026-10-01', to: '2026-10-30', env: ENV, fetchFn: mockFetch() });
+  assert.equal(r.meta.goals.cost_per_conversion, 75);
+  assert.equal(r.meta.targets.cpl, 75);
+  assert.equal(r.meta.has.leads, true);
+});
+
+test('changing goals or the paused setting busts the cache', () => {
+  const base = { customer_id: '123-456-7890', name: 'A' };
+  assert.notEqual(cacheKey(base, '2026-10-01', '2026-10-30'), cacheKey({ ...base, goals: { roas: 3 } }, '2026-10-01', '2026-10-30'));
+  assert.notEqual(cacheKey(base, '2026-10-01', '2026-10-30'), cacheKey({ ...base, include_paused: true }, '2026-10-01', '2026-10-30'));
+});
+
+test('goal ranges, spend by campaign type and dash-insensitive conversion names', async () => {
+  const { cleanGoals, parseCpa } = await import('../netlify/lib/goals.mjs');
+  assert.deepEqual(parseCpa('200-300'), { low: 200, high: 300 });
+  assert.deepEqual(parseCpa('$200 to $800'), { low: 200, high: 800 });
+  assert.deepEqual(parseCpa(250), { low: null, high: 250 });
+  const g = cleanGoals({ cost_per_conversion: '200-300', spend_by_type: { video: 10000, 'search+pmax': 30000, bogus: 5 }, weekly_conversions: 70 });
+  assert.equal(g.cost_per_conversion, 300);
+  assert.equal(g.cpa_low, 200);
+  assert.deepEqual(g.spend_by_type, [{ types: ['video'], amount: 10000 }, { types: ['search', 'pmax'], amount: 30000 }]);
+  const c = makeClassifier({ leads: ['MQL - MP Offline Conversions - LEADS feed'] });
+  assert.equal(c.roles('MQL - MP Offline Conversions — LEADS feed'), 'leads');
+  assert.equal(c.roles('mql  -  mp offline conversions - leads FEED'), 'leads');
+});
+
+test('goals written in clients.json all parse', async () => {
+  const { cleanGoals } = await import('../netlify/lib/goals.mjs');
+  const withGoals = loadClients({}).filter((c) => c.goals);
+  assert.ok(withGoals.length >= 7);
+  for (const c of withGoals) assert.ok(cleanGoals(c.goals).any, c.name + ' goals did not parse');
+});
+
+test('team dashboard row judges a client against its goals', async () => {
+  const { summarize } = await import('../netlify/lib/team.mjs');
+  const p = demoReport('demo-calls', '2026-10-01', '2026-10-30');
+  const row = summarize({ token: 'x-1234', name: 'X', customer_id: '123-456-7890', goals: { cost_per_conversion: 1, monthly_spend: 999999, focus_conversions: ['Nope'] } }, p);
+  assert.equal(row.overall, 'bad');
+  assert.ok(row.checks.find((k) => k.key === 'cpa').status === 'bad');
+  assert.match(row.ads_url, /__c=1234567890/);
+  assert.equal(row.report_url, '/x-1234');
+  const ok = summarize({ token: 'y-1234', name: 'Y', customer_id: '123-456-7890', goals: { cost_per_conversion: 100000 } }, p);
+  assert.equal(ok.overall, 'good');
+  assert.equal(summarize({ token: 'z-1234', name: 'Z', customer_id: '1' }, p).overall, 'none');
+});
+
+test('admin validation catches bad input and fills the link key', async () => {
+  const { validate } = await import('../netlify/functions/admin.mjs');
+  const list = [{ token: 'sandler-7469', name: 'Sandler', customer_id: '306-924-7469' }];
+  const c = { name: 'New Co', customer_id: '1234567890' };
+  assert.deepEqual(validate(c, list, null), []);
+  assert.equal(c.token, 'new-co-7890');
+  assert.equal(c.customer_id, '123-456-7890');
+  assert.ok(validate({ name: '', customer_id: '12' }, list, null).length >= 2);
+  assert.ok(validate({ name: 'S', customer_id: '3069247469', token: 'sandler-7469' }, list, null).join(' ').includes('already'));
+  assert.deepEqual(validate({ name: 'Sandler', customer_id: '3069247469', token: 'sandler-7469' }, list, 'sandler-7469'), []);
+  assert.ok(validate({ name: 'T', customer_id: '1234567890', token: 'team' }, list, null).join(' ').includes('reserved'));
+});

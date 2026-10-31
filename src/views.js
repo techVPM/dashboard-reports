@@ -3,9 +3,7 @@ var S = { view: 'overview', cid: null, type: 'all', scn: 0, met: { o: null, t: n
 var VIEWS = {
   overview: ['Overview', 'How ad spend turns into results'],
   weekly: ['Week by week', 'Every key number, one week at a time'],
-  trends: ['Trends and outlook', 'Where results are heading and what a budget change would do'],
-  campaigns: ['Campaigns', 'Select a campaign to see its audiences, videos and ads'],
-  audiences: ['Audiences', 'Who responds, and at what price'],
+  campaigns: ['Campaigns', 'Select a campaign to see its ads, searches and audiences'],
   videos: ['Videos', 'Which video creatives to scale and which to cut'],
   ads: ['Ads and searches', 'Ads, keywords and the searches behind them'],
   insights: ['Insights and actions', 'What the numbers mean and what to do next']
@@ -134,9 +132,13 @@ function campTable(rows) {
   rows = rows.map(function (c) { return Object.assign({}, c.cur, { id: c.id, name: c.name, type: c.type }); });
   return tbl('campaigns', cols, rows, function (r) { return ' data-camp="' + esc(r.id) + '" tabindex="0"'; });
 }
-function audTable(rows, showCamp) {
+function audTable(rows, showCamp, compact) {
   var cols = [{ k: 'name', l: 'Audience', nm: 1, v: function (r) { return r.name; }, f: function (r) { return '<b>' + esc(r.name) + '</b>' + (r.detail ? '<br><span class="tag">' + esc(r.detail) + '</span>' : ''); } }];
   if (showCamp) cols.push({ k: 'camp', l: 'Campaign', v: function (r) { return r.camp; }, f: function (r) { return esc(r.camp); } });
+  if (compact) {
+    if (!S.sort['audiences-d']) S.sort['audiences-d'] = ['spend', -1];
+    return '<div class="compact">' + tbl('audiences-d', cols.concat(outCols(), verdictCol('item', thrItem())), rows, null, 5) + '</div>';
+  }
   return tbl('audiences', cols.concat(outCols(), verdictCol('item', thrItem())), rows);
 }
 function thumb(r) {
@@ -202,13 +204,50 @@ function insightCard(i, withTone) {
 }
 
 /* ---------- views ---------- */
+function goalsPanel(A) {
+  var G = META.goals; if (!G || !G.any) return '';
+  var cur = A.cur, s1 = sing(rlab()), per = N === 30 ? '' : ' (scaled to 30 days)', sc = 30 / N, cards = [];
+  function card(label, val, goal, cls, word, foot) {
+    return '<div class="goal"><div class="gl">' + label + '</div><div class="gv">' + val + '</div><div class="gt">Goal ' + goal + '</div><span class="pill ' + cls + '">' + word + '</span>' + (foot ? '<div class="gf">' + foot + '</div>' : '') + '</div>';
+  }
+  function spendCard(label, sv, gs, raw) {
+    var ks = sv > gs * 1.2 ? 'bad' : sv > gs * 1.05 || sv < gs * .85 ? 'warn' : 'good';
+    cards.push(card(label, money(sv), money(gs) + ' a month', ks, ks === 'good' ? 'On budget' : sv > gs ? 'Over budget' : 'Under pace', money(raw) + ' in this range' + per));
+  }
+  if (G.cost_per_conversion) {
+    var c = cprO(cur), g = G.cost_per_conversion, lo = G.cpa_low, k = c == null ? 'early' : c <= g ? 'good' : c <= g * 1.15 ? 'warn' : 'bad';
+    var gtxt = lo ? money(lo) + ' to ' + money(g) : money2(g) + ' or less';
+    cards.push(card('Cost per ' + s1, c == null ? NA() : money2(c), gtxt, k, c == null ? 'No results yet' : k === 'good' ? 'On goal' : k === 'warn' ? 'Close' : 'Over goal', c == null ? '' : (c <= g ? money2(g - c) + ' under the top of the goal' : money2(c - g) + ' over goal')));
+  }
+  if (G.roas && HAS.rev) {
+    var r = cur.spend ? cur.rev / cur.spend : null, gr = G.roas, kr = r == null ? 'early' : r >= gr ? 'good' : r >= gr * .85 ? 'warn' : 'bad';
+    cards.push(card('Return on ad spend', r == null ? NA() : xf(r), xf(gr) + ' or more', kr, r == null ? 'No data' : kr === 'good' ? 'On goal' : kr === 'warn' ? 'Close' : 'Below goal', ''));
+  }
+  if (G.weekly_conversions) {
+    var wv = (cur[RK] || 0) * 7 / N, gw = G.weekly_conversions, kw = wv >= gw ? 'good' : wv >= gw * .85 ? 'warn' : 'bad';
+    cards.push(card(esc(rlab()) + ' per week', int(wv), int(gw) + ' a week', kw, kw === 'good' ? 'On pace' : kw === 'warn' ? 'Close' : 'Behind pace', int(cur[RK] || 0) + ' in this range'));
+  }
+  if (G.monthly_conversions) {
+    var pv = (cur[RK] || 0) * sc, gm = G.monthly_conversions, km = pv >= gm ? 'good' : pv >= gm * .85 ? 'warn' : 'bad';
+    cards.push(card(esc(rlab()) + ' per 30 days', int(pv), int(gm) + ' a month', km, km === 'good' ? 'On pace' : km === 'warn' ? 'Close' : 'Behind pace', int(cur[RK] || 0) + ' in this range' + per));
+  }
+  if (G.monthly_spend) spendCard('Spend per 30 days', cur.spend * sc, G.monthly_spend, cur.spend);
+  (G.spend_by_type || []).forEach(function (t) {
+    var raw = 0; list().forEach(function (cp) { if (t.types.indexOf(cp.type) > -1) raw += cp.cur.spend; });
+    if (S.type !== 'all' && t.types.indexOf(S.type) < 0) return;
+    spendCard(t.types.map(function (x) { return TYPE_LBL[x] || x; }).join(' and ') + ' spend per 30 days', raw * sc, t.amount, raw);
+  });
+  var sub = 'How this period compares with the targets we set together.' + (G.focus_conversions && G.focus_conversions.length ? ' Counting: ' + G.focus_conversions.map(esc).join(', ') + '.' : '');
+  var body = (cards.length ? '<div class="goals">' + cards.join('') + '</div>' : '') + (G.note ? '<p class="note">' + esc(G.note) + '</p>' : '');
+  return body ? panel('Goals', sub, body) : '';
+}
 function vOverview() {
   var L = list(), A = agg(L); charts = [{ id: 'o', A: A }];
   var D = computeInsights();
-  return kpiCards(A, KPS()) + kpiCards(A, KPS2(), null, true) +
+  return kpiCards(A, KPS()) + kpiCards(A, KPS2(), null, true) + goalsPanel(A) +
     chartCard('o', 'Spend, results and ' + (horizon() ? horizon() + '-day ' : '') + 'outlook', horizon() ? 'Solid line is what happened. Dashed line is where it is heading at the current pace.' : 'Daily trend for the selected range. Pick 14 days or more to see a projection.', A) +
     panel('Key insights', 'The short version. <a href="#insights" class="lnk" data-go="insights">Read all of it</a>', '<div class="inslist">' + D.insights.slice(0, 3).map(insightCard).join('') + '</div>') +
-    '<div class="two">' + splitPanel(L) + actionsPanel(4) + '</div>';
+    '<div class="two">' + splitPanel(L) + actionsPanel(2) + '</div>';
 }
 function weeklyTable(A, Wk) {
   var sc = sing(LBL.calls), sl = sing(LBL.leads);
@@ -344,8 +383,8 @@ function vInsights() {
   var D = computeInsights(), out = '';
   out += panel('Wins', 'Good news in the selected range', D.wins.length ? '<div class="inslist wins">' + D.wins.map(function (w) { return '<article class="ins good win"><h3>' + esc(w.title) + '</h3><p>' + esc(w.body) + '</p></article>'; }).join('') + '</div>' : '<p class="msg">No standout wins in this range yet. See the recommended actions below.</p>');
   if (D.team.length) out += panel('From your Video Power Marketing team', '', '<div class="inslist">' + D.team.map(function (n) { return insightCard({ tone: 'team', title: n.title, body: n.body }); }).join('') + '</div>');
-  out += panel('Recommended actions', 'In priority order. Each one is meant to lower cost per ' + sing(rlab()) + ' or add volume without wasting spend.',
-    '<ol class="steps big">' + D.actions.map(function (a, i) { return '<li><span class="n">' + (i + 1) + '</span><div><div class="t">' + esc(a.title) + ' <span class="pill ' + ({ High: 'bad', Medium: 'warn', Low: 'early' }[a.priority] || 'early') + '">' + esc(a.priority) + '</span></div><div class="d">' + esc(a.body) + '</div></div></li>'; }).join('') + '</ol>');
+  out += panel('Recommended actions', 'The two most important next steps.',
+    (D.actions.length ? '<ol class="steps big">' + D.actions.map(function (a, i) { return '<li><span class="n">' + (i + 1) + '</span><div><div class="t">' + esc(a.title) + ' <span class="pill ' + ({ High: 'bad', Medium: 'warn', Low: 'early' }[a.priority] || 'early') + '">' + esc(a.priority) + '</span></div><div class="d">' + esc(a.body) + '</div></div></li>'; }).join('') + '</ol>' : '<p class="msg">Nothing urgent. The account is on track.</p>'));
   var gp = GROUPS.map(function (g) {
     var rows = D.insights.filter(function (i) { return (i.g || 'perf') === g[0]; });
     return rows.length ? panel(g[1], g[2], '<div class="inslist">' + rows.map(insightCard).join('') + '</div>') : '';
@@ -362,10 +401,12 @@ function vDetail() {
     kpiCards(A, KPS()) + kpiCards(A, KPS2(), null, true) + chartCard('cd', 'Campaign trend and outlook', 'Same view as the overview, for this campaign only.', A);
   function mine(k) { return (ITEMS[k] || []).filter(function (r) { return r.cid === c.id; }); }
   var au = mine('audiences'), vi = mine('videos'), ad = mine('ads'), kw = mine('keywords'), tm = mine('terms');
-  if (au.length) out += panel('Audiences', 'Who this campaign reached', audTable(au, false));
   if (vi.length) out += panel('Videos', 'Creative inside this campaign', vidTable(vi, false));
   if (ad.length) out += panel('Ads', 'Ads inside this campaign', adTable(ad, false));
   if (kw.length) out += panel('Keywords', 'Top keywords by spend', termTable('keywords-d', 'Keyword', kw));
   if (tm.length) out += panel('Search terms', 'Highest-spend searches', termTable('terms-d', 'Search term', tm));
+  if (au.length) out += panel('Audiences', 'Top segments by spend, 5 at a time', audTable(au, false, true));
+  var age = groupBy('age', [c.id]), gen = groupBy('gender', [c.id]), dev = groupBy('device', [c.id]), cn = 'Cost per ' + sing(rlab());
+  if (age.length || gen.length || dev.length) out += '<div class="three">' + panel(cn + ' by age', '', bars(age)) + panel(cn + ' by gender', '', bars(gen)) + panel(cn + ' by device', '', bars(dev)) + '</div>';
   return out;
 }

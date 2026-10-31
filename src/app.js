@@ -22,9 +22,8 @@ function render() {
     var opts = [['all', 'All campaigns']].concat(types.map(function (x) { return [x, TYPE_LBL[x] || 'Other']; }));
     seg.innerHTML = opts.map(function (o) { return '<button data-type="' + o[0] + '" class="' + (S.type === o[0] ? 'on' : '') + '" aria-pressed="' + (S.type === o[0]) + '">' + o[1] + '</button>'; }).join('');
   } else { seg.hidden = true; S.type = 'all'; }
-  var f = { overview: vOverview, weekly: vWeekly, trends: vTrends, campaigns: vCampaigns, audiences: vAudiences, videos: vVideos, ads: vAds, insights: vInsights, campaign: vDetail }[S.view];
+  var f = { overview: vOverview, weekly: vWeekly, campaigns: vCampaigns, videos: vVideos, ads: vAds, insights: vInsights, campaign: vDetail }[S.view];
   charts = []; view.innerHTML = f(); paintCharts();
-  if (S.view === 'trends') scnNote();
   if (S.view === 'weekly') { var A = agg(list()), Wk = weeks(A); weekChart(document.getElementById('ch-wk1'), Wk, 'bars'); weekChart(document.getElementById('ch-wk2'), Wk, 'line'); hourChart(document.getElementById('ch-hr')); }
   try { history.replaceState(null, '', location.search + '#' + (S.view === 'campaign' ? 'c-' + S.cid : S.view)); } catch (e) { /* ignore */ }
 }
@@ -99,7 +98,7 @@ function load() {
 
 /* ---------- events ---------- */
 root.addEventListener('click', function (e) {
-  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-ai],[data-page],[data-close]'); if (!t || !root.contains(t)) return;
+  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-ai],[data-page],[data-close],[data-burger]'); if (!t || !root.contains(t)) return;
   if (t.tagName === 'A') e.preventDefault();
   if (t.dataset.range) {
     var m = t.dataset.range;
@@ -110,12 +109,17 @@ root.addEventListener('click', function (e) {
     }
     S.range.mode = m; load(); return;
   }
+  if (t.dataset.burger != null) {
+    var sd = document.getElementById('side'), op = !sd.classList.contains('open');
+    sd.classList.toggle('open', op); t.setAttribute('aria-expanded', op ? 'true' : 'false'); return;
+  }
+  if (t.dataset.go || t.dataset.camp) { var sd2 = document.getElementById('side'); if (sd2) sd2.classList.remove('open'); var bg = document.getElementById('burger'); if (bg) bg.setAttribute('aria-expanded', 'false'); }
   if (t.dataset.close) return closeVideo();
   if (t.dataset.vi) return openVideo(+t.dataset.vi);
   if (t.dataset.ai) return openLanding(+t.dataset.ai);
   if (t.dataset.page) { var pp = t.dataset.page.split(':'); S.page[pp[0]] = Math.max(0, (S.page[pp[0]] || 0) + (+pp[1])); return render(); }
   if (t.dataset.go) return go(t.dataset.go);
-  if (t.dataset.camp) return go('campaign', t.dataset.camp);
+  if (t.dataset.camp) { S.page = {}; return go('campaign', t.dataset.camp); }
   if (t.dataset.met) {
     var p = t.dataset.met.split(':'); S.met[p[0]] = p[1];
     t.parentNode.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b === t); });

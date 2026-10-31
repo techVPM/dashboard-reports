@@ -161,6 +161,7 @@ export function demoReport(token, from, to) {
       has: full ? { leads: true, calls: true, deals: true, revenue: true } : { leads: false, calls: true, deals: false, revenue: false },
       labels: { leads: 'Leads', calls: 'Booked calls', deals: 'Sales' },
       targets: full ? { cpl: 35, cpc: 140, roas: 3, breakeven: 2 } : { cpl: null, cpc: null, roas: null, breakeven: null },
+      goals: full ? { cost_per_conversion: 95, cpa_low: 60, spend_by_type: [{ types: ['video'], amount: 9000 }], roas: 5, monthly_conversions: 250, monthly_spend: 22000, focus_conversions: ['Booked Call'], result_label: 'Booked calls', note: 'Goal: book calls under $95 each while keeping return on ad spend above 5x.', any: true } : { any: false },
       notes: [{ title: 'A note from your VPM team', body: 'This is sample data so you can see the layout. Real reports show your own account.' }],
       actions: [],
       term_groups: { 'Brand searches': 'chris|shatek|coach by chris', 'AA and treatment seekers': 'anonymous|treatment|hotline|rehab' },

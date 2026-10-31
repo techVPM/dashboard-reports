@@ -1,7 +1,7 @@
 // Runs every day and asks the background function to refresh each client.
 // Schedule is in UTC. 17:00 UTC = 10:00 am Mountain Standard Time (winter, Nov to Mar), 11:00 am Mountain Daylight Time (summer).
 // In March, change the cron line below to "0 16 * * *" to keep it at 10 am.
-import { loadClients } from '../lib/store.mjs';
+import { getClients } from '../lib/store.mjs';
 
 export default async () => {
   const base = process.env.URL || process.env.DEPLOY_PRIME_URL;
@@ -10,7 +10,7 @@ export default async () => {
     console.error('refresh: REFRESH_SECRET or site URL missing');
     return;
   }
-  const clients = loadClients().filter((c) => c.token && c.customer_id && !c.disabled);
+  const clients = (await getClients()).filter((c) => c.token && c.customer_id && !c.disabled);
   // Background functions answer right away (202) and keep working for up to 15 minutes each.
   const results = await Promise.allSettled(
     clients.map((c) =>

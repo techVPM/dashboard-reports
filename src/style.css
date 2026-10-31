@@ -286,3 +286,91 @@
 .vpm .mbtn{display:inline-block;background:var(--fg);color:var(--bg)!important;font-weight:700;text-decoration:none;padding:9px 16px;border-radius:8px}
 .vpm .mbtn:hover{opacity:.88}
 .vpm .mlink span{color:var(--muted);font-size:13.5px;overflow-wrap:anywhere}
+/* ---- v1.4: spacing fix. Boxes in the page body get real gaps, less padding inside each box ---- */
+.vpm .app{gap:22px}
+.vpm main{gap:22px}
+.vpm #view{display:flex;flex-direction:column;gap:22px}
+.vpm .kpis{gap:22px 14px}
+.vpm .kpi{padding:16px 16px 14px;border-radius:14px}
+.vpm .kpi .row{margin-top:4px}
+.vpm .kpi .dl{margin-top:6px}
+.vpm .panel{padding:22px 22px;border-radius:16px}
+.vpm .ph{margin-bottom:16px}
+.vpm .two{gap:22px 16px}
+.vpm .masonry{column-gap:16px}
+.vpm .masonry .panel{margin-bottom:22px}
+.vpm .masonry .panel:last-child{margin-bottom:0}
+.vpm .t td{padding:13px 12px}
+.vpm .t th button{padding:10px 12px}
+.vpm .ins{padding:16px 16px}
+.vpm .inslist{gap:14px}
+.vpm .group{margin-bottom:16px}
+.vpm .gr{padding:13px 14px}
+.vpm .steps li{padding:12px 8px}
+.vpm .steps{gap:6px}
+.vpm .clock{margin-top:16px;padding:16px}
+.vpm .bars{gap:14px}
+.vpm .pager{margin-top:16px}
+.vpm .fold summary{padding:18px 22px}
+.vpm .fold .inslist{padding:0 22px 22px}
+.vpm .compact .t td{padding:8px 10px;font-size:14px}
+.vpm .compact .t th button{padding:8px 10px}
+.vpm .compact .pager{margin-top:10px}
+/* goals */
+.vpm .goals{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.vpm .goal{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--soft);display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.vpm .goal .gl{font-size:13px;font-weight:600;color:var(--muted)}
+.vpm .goal .gv{font-family:var(--font-head);font-size:28px;line-height:1.1;font-variant-numeric:tabular-nums}
+.vpm .goal .gt{font-size:13.5px;color:var(--muted)}
+.vpm .goal .gf{font-size:12.5px;color:var(--muted)}
+.vpm .panel>.note{margin-top:14px}
+/* menu button (phones) */
+.vpm .burger{display:none}
+@media (max-width:900px){
+.vpm .app,.vpm main,.vpm #view{gap:16px}
+.vpm .side{position:sticky;top:0;z-index:30;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:10px 14px;gap:0;overflow:visible}
+.vpm .brand{display:block;padding:0;font-size:13px;line-height:1.1}
+.vpm .brand span{display:inline;margin-left:6px}
+.vpm .burger{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.1);border:0;color:#fff;font-weight:700;font-size:14px;padding:8px 12px;border-radius:8px;cursor:pointer}
+.vpm .burger svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.vpm .nav{display:none;flex-direction:column;flex-basis:100%;width:100%;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.14);gap:2px}
+.vpm .side.open .nav{display:flex}
+.vpm .nav button{width:100%;white-space:normal;padding:12px 10px;font-size:15px}
+.vpm .nav button.on{box-shadow:inset 3px 0 0 #E0474C}
+.vpm .side.open .sidefoot{display:block;flex-basis:100%;padding:10px 10px 2px}
+.vpm .kpis{gap:12px 10px}
+.vpm .kpi{padding:13px 13px 11px}
+.vpm .kpi .v{font-size:24px}
+.vpm .panel{padding:18px 16px}
+.vpm .masonry .panel{margin-bottom:16px}
+.vpm .t td{padding:11px 10px}
+/* compact top area: title row, then two thin one-line controls */
+.vpm .top{gap:8px;align-items:stretch}
+.vpm .top h1{font-size:22px}
+.vpm .top h2{font-size:17px;margin-top:2px}
+.vpm .top p#sub{display:none}
+.vpm .updm{margin:2px 0 0;font-size:12px}
+.vpm .ctl,.vpm .datebox{width:100%;gap:6px}
+.vpm .seg{display:flex;width:100%;max-width:100%;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none;padding:2px}
+.vpm .seg::-webkit-scrollbar{display:none}
+.vpm .seg button{flex:1 0 auto;padding:6px 10px;font-size:13px;white-space:nowrap}
+.vpm .rangebar,.vpm .rangebar.stack{gap:4px 8px}
+.vpm .rangebar .chip{font-size:12px;padding:3px 8px}
+}
+.vpm .kpis{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.vpm .kpis.sm{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+@media (max-width:900px){
+.vpm .kpis,.vpm .kpis.sm{grid-template-columns:repeat(2,minmax(0,1fr))}
+.vpm .nav{max-height:calc(100vh - 110px);overflow-y:auto}
+}
+/* ---- v1.5: equal 14px gaps between boxes; three small panels in a row ---- */
+.vpm .app,.vpm main,.vpm #view{gap:14px}
+.vpm .kpis,.vpm .kpis.sm{gap:14px}
+.vpm .two{gap:14px}
+.vpm .masonry{column-gap:14px}
+.vpm .masonry .panel{margin-bottom:14px}
+.vpm .masonry .panel:last-child{margin-bottom:0}
+.vpm .goals{gap:14px}
+.vpm .three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.vpm .three .bar{grid-template-columns:56px minmax(0,1fr) 52px;font-size:13.5px}
+@media (max-width:900px){.vpm .app,.vpm main,.vpm #view,.vpm .kpis,.vpm .kpis.sm,.vpm .two,.vpm .goals,.vpm .three{gap:14px}.vpm .three{grid-template-columns:minmax(0,1fr)}.vpm .masonry .panel{margin-bottom:14px}}

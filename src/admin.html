@@ -1,0 +1,155 @@
+<div class="vpm tm ad" id="vpm">
+<div class="wrap">
+  <header class="tbar">
+    <div class="brand">VIDEO POWER<span>MARKETING</span></div>
+    <div class="tbtns"><a class="tlink" href="/team">All clients dashboard</a><button type="button" class="tlink" id="out" hidden>Sign out</button></div>
+  </header>
+  <div class="thead"><div><h1>Clients and goals</h1><p class="sub">Add a client or change budgets, goals and notes. Changes show on the client's report within a few minutes.</p></div></div>
+  <form class="panel gate" id="gate" hidden>
+    <h2>Team sign in</h2>
+    <p class="sub">Use the admin password (the ADMIN_PASSWORD setting in Netlify).</p>
+    <div class="grow"><input type="password" id="pw" autocomplete="current-password" aria-label="Password" placeholder="Password"><button class="mbtn" type="submit">Sign in</button></div>
+    <p class="err" id="gerr" hidden></p>
+  </form>
+  <p class="srcnote" id="src" hidden></p>
+  <div class="adgrid" id="app" hidden>
+    <aside class="panel clientlist">
+      <button type="button" class="mbtn full" data-new="1">+ Add a client</button>
+      <ul id="clist"></ul>
+    </aside>
+    <form class="panel cform" id="form" novalidate></form>
+  </div>
+</div>
+</div>
+<script>
+(function () {
+  'use strict';
+  var KEY = 'vpm_admin_key', pw = '';
+  try { pw = localStorage.getItem(KEY) || ''; } catch (e) { /* private mode */ }
+  var $ = function (id) { return document.getElementById(id); };
+  var LIST = [], CUR = null, ORIG = null, SITE = location.origin;
+  var TZ = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific'], ['America/Anchorage', 'Alaska'], ['Pacific/Honolulu', 'Hawaii']];
+  var TYPES = [['video', 'Video (YouTube and Demand Gen)'], ['search', 'Search'], ['pmax', 'Performance Max'], ['search+pmax', 'Search and Performance Max combined'], ['shopping', 'Shopping'], ['display', 'Display']];
+  var FORM_KEYS = ['name', 'customer_id', 'token', 'timezone', 'disabled', 'include_paused', 'goals', 'notes', 'last_change_date', 'ads_url'];
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function slug(n, id) { return String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '-' + String(id || '').replace(/\D/g, '').slice(-4); }
+
+  function api(path, opt) {
+    opt = opt || {}; opt.headers = Object.assign({ 'x-admin-key': pw, 'content-type': 'application/json' }, opt.headers || {});
+    return fetch(path, opt).then(function (r) { return r.json().then(function (j) { if (r.status === 401) throw { auth: 1 }; if (!r.ok) throw new Error(j.error || 'Failed'); return j; }); });
+  }
+  function gate(msg) { $('gate').hidden = false; $('app').hidden = true; $('src').hidden = true; $('out').hidden = true; if (msg) { $('gerr').hidden = false; $('gerr').textContent = msg; } $('pw').focus(); }
+  $('gate').addEventListener('submit', function (e) { e.preventDefault(); pw = $('pw').value.trim(); if (!pw) return; try { localStorage.setItem(KEY, pw); } catch (er) { /* ignore */ } load(); });
+  $('out').addEventListener('click', function () { try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ } pw = ''; gate(); });
+
+  function load(pick) {
+    if (!pw) return gate();
+    api('/api/admin').then(function (j) {
+      LIST = j.clients || []; $('gate').hidden = true; $('gerr').hidden = true; $('app').hidden = false; $('out').hidden = false;
+      var s = $('src'); s.hidden = j.source === 'admin';
+      s.textContent = 'Right now the client list comes from ' + j.source + ' in GitHub. The first time you save here, this page takes over and clients.json is no longer used.';
+      var want = pick || (location.hash || '').slice(1);
+      var c = LIST.filter(function (x) { return x.token === want; })[0] || (CUR && LIST.filter(function (x) { return x.token === CUR.token; })[0]) || LIST[0];
+      drawList(); edit(c || null);
+    }).catch(function (e) { if (e && e.auth) gate('That password did not work.'); else alert(e.message); });
+  }
+  function drawList() {
+    $('clist').innerHTML = LIST.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (c) {
+      return '<li><button type="button" data-pick="' + esc(c.token) + '" class="' + (CUR && CUR.token === c.token && ORIG ? 'on' : '') + '">' + esc(c.name) + (c.disabled ? ' <span class="pill early">Off</span>' : '') + '<small>' + esc(c.customer_id) + '</small></button></li>';
+    }).join('');
+  }
+  function val(id) { var el = $(id); return el ? el.value.trim() : ''; }
+  function numv(id) { var v = val(id).replace(/[$,]/g, ''); return v === '' ? undefined : Number(v); }
+  function lines(id) { return val(id).split('\n').map(function (x) { return x.trim(); }).filter(Boolean); }
+  function f(label, id, v, hint, type) { return '<label class="fld"><span>' + label + '</span><input id="' + id + '" type="' + (type || 'text') + '" value="' + esc(v == null ? '' : v) + '">' + (hint ? '<small>' + hint + '</small>' : '') + '</label>'; }
+  function ta(label, id, v, hint, rows) { return '<label class="fld wide"><span>' + label + '</span><textarea id="' + id + '" rows="' + (rows || 3) + '">' + esc(v || '') + '</textarea>' + (hint ? '<small>' + hint + '</small>' : '') + '</label>'; }
+
+  function edit(c) {
+    CUR = c ? JSON.parse(JSON.stringify(c)) : { name: '', customer_id: '', timezone: 'America/Denver', goals: {} };
+    ORIG = c ? c.token : null;
+    try { history.replaceState(null, '', ORIG ? '#' + ORIG : location.pathname); } catch (e) { /* ignore */ }
+    drawList();
+    var g = CUR.goals || {}, sbt = g.spend_by_type || {}, note = (CUR.notes && CUR.notes[0] && CUR.notes[0].body) || '';
+    var adv = {}; Object.keys(CUR).forEach(function (k) { if (FORM_KEYS.indexOf(k) < 0) adv[k] = CUR[k]; });
+    var link = ORIG ? SITE + '/' + ORIG : '';
+    $('form').innerHTML =
+      '<div class="fhead"><h2>' + (ORIG ? esc(CUR.name) : 'New client') + '</h2>' + (link ? '<a class="obtn" href="' + esc(link) + '" target="_blank" rel="noopener">Open report</a>' : '') + '</div>' +
+      (link ? '<p class="linkline">Client link: <b>' + esc(link) + '</b> <button type="button" class="tlink" data-copy="' + esc(link) + '">Copy</button></p>' : '') +
+      '<fieldset><legend>Account</legend><div class="fgrid">' +
+        f('Client name', 'f_name', CUR.name) +
+        f('Google Ads ID', 'f_cid', CUR.customer_id, 'Like 123-456-7890') +
+        f('Link key', 'f_tok', CUR.token, 'Leave blank to use the name plus the last 4 digits. Changing it breaks the old link.') +
+        '<label class="fld"><span>Time zone of the Ads account</span><select id="f_tz">' + TZ.map(function (z) { return '<option value="' + z[0] + '"' + ((CUR.timezone || 'America/Denver') === z[0] ? ' selected' : '') + '>' + z[1] + '</option>'; }).join('') + '</select></label>' +
+        '<label class="chkl"><input type="checkbox" id="f_paused"' + (CUR.include_paused ? ' checked' : '') + '> Show paused campaigns</label>' +
+        '<label class="chkl"><input type="checkbox" id="f_off"' + (CUR.disabled ? ' checked' : '') + '> Turn this report off</label>' +
+      '</div></fieldset>' +
+      '<fieldset><legend>Goals</legend><div class="fgrid">' +
+        f('Target cost per conversion', 'g_cpa', g.cost_per_conversion, 'A number like 250, or a range like 200-300') +
+        f('What to call a result', 'g_lbl', g.result_label, 'For example Leads, Booked calls, Store visits') +
+        ta('Main conversions (one per line)', 'g_focus', (g.focus_conversions || []).join('\n'), 'Exact names from Goals, Conversions in Google Ads. These are counted as results.') +
+        ta('Other conversions to watch (one per line)', 'g_sec', (g.secondary_conversions || []).join('\n'), 'Shown on the team dashboard, not counted as results.') +
+        f('Monthly spend, whole account', 'g_ms', g.monthly_spend, 'Dollars per month') +
+        TYPES.map(function (t) { return f('Monthly spend: ' + t[1], 'g_t_' + t[0].replace('+', '_'), sbt[t[0]]); }).join('') +
+        f('Results per month', 'g_mc', g.monthly_conversions) +
+        f('Results per week', 'g_wc', g.weekly_conversions) +
+        f('Target return on ad spend', 'g_roas', g.roas, 'For example 4 means $4 back for every $1. Needs revenue tracking.') +
+        ta('Goal note shown to the client', 'g_note', g.note, 'One sentence, for example: Goal is under $250 per booked demo.', 2) +
+      '</div></fieldset>' +
+      '<fieldset><legend>Report extras</legend><div class="fgrid">' +
+        ta('Note to the client', 'x_note', note, 'Shows at the top of the Insights page as a note from your VPM team.', 3) +
+        f('Date of the last big account change', 'x_lcd', CUR.last_change_date, 'Starts the 14-day wait clock', 'date') +
+        f('Google Ads link (optional)', 'x_ads', CUR.ads_url, 'Paste the address of this account in Google Ads if the team dashboard link opens the wrong place') +
+      '</div></fieldset>' +
+      '<details class="adv"><summary>Advanced settings (for developers)</summary>' + ta('Other settings as JSON', 'x_adv', JSON.stringify(adv, null, 2), 'outcomes, labels, targets, term_groups, actions, conversion_field and so on. Leave as is if unsure.', 8) + '</details>' +
+      '<p class="err" id="ferr" hidden></p><p class="ok" id="fok" hidden></p>' +
+      '<div class="fbtns"><button type="submit" class="mbtn">' + (ORIG ? 'Save changes' : 'Add client') + '</button>' + (ORIG ? '<button type="button" class="obtn danger" data-del="1">Delete client</button>' : '') + '</div>';
+  }
+  function collect() {
+    var adv = {};
+    var a = val('x_adv');
+    if (a) { try { adv = JSON.parse(a); } catch (e) { throw new Error('Advanced settings are not valid JSON.'); } }
+    var c = Object.assign({}, adv);
+    c.name = val('f_name'); c.customer_id = val('f_cid'); c.token = val('f_tok') || slug(c.name, c.customer_id);
+    c.timezone = val('f_tz');
+    if ($('f_paused').checked) c.include_paused = true;
+    if ($('f_off').checked) c.disabled = true;
+    var g = {}, cpa = val('g_cpa');
+    if (cpa) g.cost_per_conversion = /\d\s*(-|to)\s*\$?\d/.test(cpa) ? cpa : Number(cpa.replace(/[$,]/g, ''));
+    if (val('g_lbl')) g.result_label = val('g_lbl');
+    if (lines('g_focus').length) g.focus_conversions = lines('g_focus');
+    if (lines('g_sec').length) g.secondary_conversions = lines('g_sec');
+    if (numv('g_ms')) g.monthly_spend = numv('g_ms');
+    var sbt = {}; TYPES.forEach(function (t) { var v = numv('g_t_' + t[0].replace('+', '_')); if (v) sbt[t[0]] = v; });
+    if (Object.keys(sbt).length) g.spend_by_type = sbt;
+    if (numv('g_mc')) g.monthly_conversions = numv('g_mc');
+    if (numv('g_wc')) g.weekly_conversions = numv('g_wc');
+    if (numv('g_roas')) g.roas = numv('g_roas');
+    if (val('g_note')) g.note = val('g_note');
+    if (Object.keys(g).length) c.goals = g;
+    if (val('x_note')) c.notes = [{ title: 'A note from your VPM team', body: val('x_note') }];
+    if (val('x_lcd')) c.last_change_date = val('x_lcd');
+    if (val('x_ads')) c.ads_url = val('x_ads');
+    return c;
+  }
+  function msg(id, text) { ['ferr', 'fok'].forEach(function (x) { $(x).hidden = true; }); if (text) { $(id).hidden = false; $(id).textContent = text; } }
+  $('form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var c; try { c = collect(); } catch (er) { return msg('ferr', er.message); }
+    var b = e.submitter || $('form').querySelector('[type=submit]'); b.disabled = true;
+    api('/api/admin', { method: 'POST', body: JSON.stringify({ action: 'save', client: c, original_token: ORIG }) })
+      .then(function (j) { LIST = j.clients; CUR = j.client; ORIG = null; edit(j.client); $('src').hidden = true; msg('fok', 'Saved. ' + (j.warmed ? 'The report is refreshing now and will be ready in a minute or two.' : 'The report updates the next time it loads.')); })
+      .catch(function (er) { b.disabled = false; if (er && er.auth) gate('Your password no longer works.'); else msg('ferr', er.message); });
+  });
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-pick],[data-new],[data-del],[data-copy]'); if (!t) return;
+    if (t.dataset.pick) return edit(LIST.filter(function (x) { return x.token === t.dataset.pick; })[0]);
+    if (t.dataset.new) return edit(null);
+    if (t.dataset.copy) { try { navigator.clipboard.writeText(t.dataset.copy); t.textContent = 'Copied'; } catch (er) { /* ignore */ } return; }
+    if (t.dataset.del) {
+      if (!confirm('Delete ' + CUR.name + '? Their link stops working. To pause a report instead, tick "Turn this report off".')) return;
+      api('/api/admin', { method: 'POST', body: JSON.stringify({ action: 'delete', token: ORIG }) }).then(function (j) { LIST = j.clients; CUR = null; edit(LIST[0] || null); }).catch(function (er) { msg('ferr', er.message); });
+    }
+  });
+  load();
+})();
+</script>

@@ -191,7 +191,7 @@ function computeInsights() {
 
   /* ----- actions ----- */
   (META.actions || []).forEach(function (a) { acts.push({ title: a.title, body: a.body, priority: a.priority || 'High', team: true }); });
-  if (trackGap) acts.push({ priority: 'High', title: 'Fix conversion tracking before shifting budget', body: 'Make ' + UP + ' the main goal in every campaign and remove extra actions (logins, follow-on views) from campaign goals, starting with ' + trackGap.c.name + '. Then bidding and this report agree on what a result is.' });
+  if (trackGap) notes.push({ title: 'Google counts more conversions than ' + UP, body: 'Google Ads counts other actions too (for example logins or follow-on views), starting with ' + trackGap.c.name + '. This report counts only ' + UP + ', so cost per ' + U + ' here is the number to manage to.' });
   C.filter(function (c) { return stat(c.cur, thrCamp()) === 'fix'; }).sort(function (a, b) { return b.cur.spend - a.cur.spend; }).slice(0, 1).forEach(function (c) {
     acts.push({ priority: 'High', title: 'Fix or pause ' + c.name, body: (c._cpr && c._cpr !== Infinity ? 'It costs ' + money(c._cpr) + ' per ' + U : 'It has produced no ' + UP) + ' on ' + money(c.cur.spend) + ' of spend' + (HAS.rev && c.cur.spend ? ' (' + xf(c.cur.rev / c.cur.spend) + ' return)' : '') + '. Rework its targeting and creative, or move the budget to stronger campaigns.' });
   });
@@ -200,18 +200,12 @@ function computeInsights() {
     acts.push({ priority: limited ? 'High' : 'Medium', title: 'Add budget to ' + best.name, body: 'It has the best cost per ' + U + ' (' + money(best._cpr) + ')' + (limited ? ' and is losing about ' + pct0(best.lostB) + ' of eligible impressions to budget' : '') + '. Raise its daily budget about 20% and watch cost per ' + U + ' for a week before the next step.' });
   }
   if (wasted.length) acts.push({ priority: 'Medium', title: 'Add negative keywords for terms with no results', body: 'Start with ' + listNames(wasted, function (t) { return '"' + t.name + '"'; }, 5) + '. Together the top terms with no ' + UP + ' cost ' + money(sum(wasted.slice(0, 5).map(function (t) { return t.spend; }))) + '. Review them before adding, since some may be broad but still worth keeping.' });
-  if (zeroKw.length) acts.push({ priority: 'Medium', title: 'Pause or rework keywords that are not producing', body: listNames(zeroKw, function (k) { return '"' + k.name + '"'; }, 4) + ' spent ' + money(sum(zeroKw.slice(0, 4).map(function (k) { return k.spend; }))) + ' with no ' + UP + '. Move that budget to the winning keywords.' });
-  var adsL = (ITEMS.ads || []).filter(function (a) { return stat(a, thrItem()) === 'fix'; }).sort(function (a, b) { return b.spend - a.spend; });
-  if (adsL.length) acts.push({ priority: 'Medium', title: 'Replace the weakest ads', body: listNames(adsL, function (a) { return '"' + a.h1 + '" (' + money(a.spend) + ')'; }, 3) + ' cost the most per ' + U + '. Write new versions modeled on your best ad and test them.' });
-  var vidL = (ITEMS.videos || []).filter(function (v) { return v[RK] >= 1 && v.spend >= thrItem(); }).sort(function (a, b) { return a.spend / a[RK] - b.spend / b[RK]; })[0];
-  if (vidL) acts.push({ priority: 'Medium', title: 'Make new versions of "' + vidL.name + '"', body: 'It has the lowest cost per ' + U + ' among videos (' + money(vidL.spend / vidL[RK]) + '). Test two new openings and keep the rest of the video the same.' });
-  if (!HAS.deals) acts.push({ priority: 'Medium', title: 'Check ' + U + ' quality before scaling', body: 'Compare ' + UP + ' with show rate and closed sales by campaign and search term. Cheap ' + UP + ' that never close are not a win, and this tells you where to put more budget.' });
-  if (!HAS.rev) acts.push({ priority: 'Medium', title: 'Import closed sales as offline conversions', body: 'Sending closed sales and their value back to Google lets campaigns be judged on revenue and return, and lets bidding learn which clicks become customers.' });
-  var land = (ITEMS.landing || []);
-  if (land.length) { var lc = sum(land.map(function (l) { return l.clicks; })); if (lc >= 200 && land[0].clicks / lc >= 0.9) acts.push({ priority: 'Low', title: 'Test a dedicated landing page', body: pct0(land[0].clicks / lc) + ' of clicks land on one page (' + land[0].name + '). A page matched to the ad message, tested against it, can lift conversion rate and lower cost per ' + U + ' without touching bids.' }); }
+  var G = META.goals || {};
+  if (G.monthly_spend && N >= 7 && cur.spend * 30 / N > G.monthly_spend * 1.1) acts.push({ priority: 'High', title: 'Bring spend back to the ' + money(G.monthly_spend) + ' monthly budget', body: 'Spend is running at about ' + money(cur.spend * 30 / N) + ' per 30 days. Trim daily budgets on the weakest campaigns first.' });
   var po = { High: 0, Medium: 1, Low: 2 };
   acts.forEach(function (a, i) { a._i = i; });
   acts.sort(function (a, b) { return (b.team ? 1 : 0) - (a.team ? 1 : 0) || (po[a.priority] || 1) - (po[b.priority] || 1) || a._i - b._i; });
+  acts = acts.slice(0, 2);
 
   /* ----- notes ----- */
   notes.push({ title: 'How to read this report', body: 'Conversion rate is conversions divided by clicks. Cost per conversion is spend divided by conversions. "' + rlab() + '" are the actions counted as results for this account' + (mapped ? ', which can be fewer than every conversion Google counts.' : '.') + ' Changes are measured against the previous ' + N + ' days (' + dlab(dms(META.previous ? META.previous.from : iso(START - N * DAY))) + ' to ' + dlab(dms(META.previous ? META.previous.to : iso(START - DAY))) + ').' });

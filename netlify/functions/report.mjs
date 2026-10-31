@@ -2,7 +2,7 @@
 // GET /api/report?k=<client token>&from=2026-10-01&to=2026-10-30   (custom range)
 import { buildReport, AdsError } from '../lib/ads.mjs';
 import { demoReport } from '../lib/demo.mjs';
-import { cacheGet, cachePut, findClient } from '../lib/store.mjs';
+import { cacheGet, cachePut, findClientAsync, latestKey } from '../lib/store.mjs';
 import { resolveRange, cacheKey } from '../lib/range.mjs';
 
 const CORS = {
@@ -29,7 +29,7 @@ export default async (req) => {
     return json(demoReport(token, r.from, r.to));
   }
 
-  const client = findClient(token);
+  const client = await findClientAsync(token);
   if (!client) return json({ error: 'This report link is not valid. Ask your Video Power Marketing contact for a new one.' }, 404);
 
   const r = resolveRange(url.searchParams, client.timezone);
@@ -47,6 +47,7 @@ export default async (req) => {
   try {
     const payload = await buildReport({ client, from: r.from, to: r.to });
     await cachePut(key, { saved_at: Date.now(), payload });
+    if (!url.searchParams.get('from') && r.to < r.today && payload.meta.range.days === 30) await cachePut(latestKey(client.token), { saved_at: Date.now(), payload });
     return json(payload);
   } catch (e) {
     console.error('report failed', client.name, e.message, e.detail || '');
