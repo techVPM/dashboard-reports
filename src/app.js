@@ -12,9 +12,9 @@ function render() {
   var v = S.view === 'campaign' ? 'campaigns' : S.view;
   document.getElementById('nav').innerHTML = Object.keys(VIEWS).map(function (k) { return '<button data-go="' + k + '" class="' + (v === k ? 'on' : '') + '" ' + (v === k ? 'aria-current="page"' : '') + '><svg viewBox="0 0 20 20" aria-hidden="true">' + ICON[k] + '</svg>' + VIEWS[k][0] + '</button>'; }).join('');
   var cc = S.view === 'campaign' ? camp(S.cid) : null, t = cc ? [cc.name, 'Campaign drill-down'] : VIEWS[S.view];
+  document.getElementById('cli').textContent = META.client_name || 'Performance report';
   document.getElementById('ttl').textContent = t[0];
-  var sub = t[1]; if (S.view === 'overview' && META.client_name) sub = META.client_name + ' · ' + sub;
-  document.getElementById('sub').textContent = sub;
+  document.getElementById('sub').textContent = t[1];
   var types = []; C.forEach(function (c) { if (types.indexOf(c.type) < 0) types.push(c.type); });
   var seg = document.getElementById('typeseg');
   if (types.length > 1) {
@@ -36,17 +36,20 @@ function rangeQS() {
   if (S.range.mode === 'custom' && S.range.from && S.range.to) return 'from=' + S.range.from + '&to=' + S.range.to;
   return 'days=' + (S.range.mode === 'custom' ? '30' : S.range.mode);
 }
+function updText() {
+  if (!META.refreshed_at) return '';
+  var d = new Date(META.refreshed_at);
+  return isFinite(d) ? 'Updated ' + d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Denver' }) + ' MT' : '';
+}
 function drawRangeBar() {
   var seg = document.getElementById('rangeseg');
   seg.innerHTML = MODES.map(function (m) { return '<button data-range="' + m[0] + '" class="' + (S.range.mode === m[0] ? 'on' : '') + '" aria-pressed="' + (S.range.mode === m[0]) + '">' + m[1] + '</button>'; }).join('');
   var bar = document.getElementById('rangebar');
-  var up = '';
-  if (META.refreshed_at) { var d = new Date(META.refreshed_at); up = isFinite(d) ? 'Updated ' + d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Denver' }) + ' MT' : ''; }
   // The chosen dates are shown once: in the date boxes when Custom is open, otherwise in the first chip.
   var info = '';
   if (loaded) {
     if (S.range.mode !== 'custom') info += '<div class="chip"><b>' + dlab(START, true) + ' to ' + dlab(START + (N - 1) * DAY, true) + '</b></div>';
-    info += '<div class="chip">vs ' + esc(prevLabel()) + (up ? ' · ' + esc(up) : '') + '</div>';
+    info += '<div class="chip">vs ' + esc(prevLabel()) + '</div>';
   }
   var form = '';
   if (S.range.mode === 'custom') {
@@ -60,7 +63,9 @@ function setBusy(b) { view.classList.toggle('busy', b); root.setAttribute('aria-
 function banners() {
   document.getElementById('sample').hidden = MODE !== 'demo';
   document.getElementById('stale').hidden = !META.stale;
-  if (META.client_name) document.getElementById('sidefoot').textContent = META.client_name;
+  if (META.client_name) document.getElementById('sidefoot').innerHTML = '<div>' + esc(META.client_name) + '</div>' + (updText() ? '<div class="upd">' + esc(updText()) + '</div>' : '');
+  document.getElementById('updm').textContent = updText();
+  document.getElementById('cli').textContent = META.client_name || 'Performance report';
   try { document.title = (META.client_name ? META.client_name + ' ' : '') + 'Performance Report'; } catch (e) { /* ignore */ }
 }
 function fail(msg) { setBusy(false); view.innerHTML = '<div class="panel"><p class="msg">' + esc(msg) + '</p></div>'; drawRangeBar(); }
@@ -94,7 +99,7 @@ function load() {
 
 /* ---------- events ---------- */
 root.addEventListener('click', function (e) {
-  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-page],[data-close]'); if (!t || !root.contains(t)) return;
+  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-ai],[data-page],[data-close]'); if (!t || !root.contains(t)) return;
   if (t.tagName === 'A') e.preventDefault();
   if (t.dataset.range) {
     var m = t.dataset.range;
@@ -107,6 +112,7 @@ root.addEventListener('click', function (e) {
   }
   if (t.dataset.close) return closeVideo();
   if (t.dataset.vi) return openVideo(+t.dataset.vi);
+  if (t.dataset.ai) return openLanding(+t.dataset.ai);
   if (t.dataset.page) { var pp = t.dataset.page.split(':'); S.page[pp[0]] = Math.max(0, (S.page[pp[0]] || 0) + (+pp[1])); return render(); }
   if (t.dataset.go) return go(t.dataset.go);
   if (t.dataset.camp) return go('campaign', t.dataset.camp);
@@ -139,27 +145,46 @@ var rt; window.addEventListener('resize', function () {
   }, 120);
 });
 
-/* ---------- video popup ---------- */
+/* ---------- popups: video player and ad landing page ---------- */
 var lastFocus = null;
+function showModal(title, meta, kind, foot) {
+  var m = document.getElementById('modal'), v = document.getElementById('mvideo');
+  document.getElementById('mtitle').textContent = title;
+  document.getElementById('mmeta').textContent = meta;
+  document.getElementById('mlink').innerHTML = foot || '';
+  v.className = kind; v.innerHTML = '';
+  m.classList.toggle('wide', kind === 'mpage');
+  lastFocus = document.activeElement; m.hidden = false;
+  try { m.querySelector('.mclose').focus(); } catch (e) { /* ignore */ }
+  return v;
+}
+function frame(v, src, title, allow) {
+  var f = document.createElement('iframe');
+  f.src = src; f.title = title; f.setAttribute('allowfullscreen', '');
+  f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');   // YouTube refuses to play without a referrer
+  if (allow) f.setAttribute('allow', allow);
+  v.appendChild(f);
+}
 function openVideo(i) {
   var r = (ITEMS.videos || [])[i]; if (!r) return;
-  var m = document.getElementById('modal'), v = document.getElementById('mvideo');
-  document.getElementById('mtitle').textContent = r.name;
   var parts = [];
   if (r.camp) parts.push(r.camp);
   if (r.dur) parts.push(r.dur);
   parts.push('Spend ' + money(r.spend), int(r.views) + ' views');
   if (r[RK]) parts.push(int(r[RK]) + ' ' + rlab().toLowerCase() + ' at ' + money(r.spend / r[RK]) + ' each');
-  document.getElementById('mmeta').textContent = parts.join(' · ');
-  if (r.vid && /^[A-Za-z0-9_-]{5,20}$/.test(r.vid)) {
-    v.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + r.vid + '?autoplay=1&rel=0" title="' + esc(r.name) + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>';
-    document.getElementById('mlink').innerHTML = 'Video not playing? <a href="https://www.youtube.com/watch?v=' + r.vid + '" target="_blank" rel="noopener noreferrer">Open it on YouTube</a>';
-  } else {
-    v.innerHTML = '<div class="mnone">' + (MODE === 'demo' ? 'Sample data has no real videos. In a live report the video plays here.' : 'Google did not return a video link for this creative.') + '</div>';
-    document.getElementById('mlink').innerHTML = '';
-  }
-  lastFocus = document.activeElement; m.hidden = false;
-  try { m.querySelector('.mclose').focus(); } catch (e) { /* ignore */ }
+  var ok = r.vid && /^[A-Za-z0-9_-]{5,20}$/.test(r.vid);
+  var yt = ok ? 'https://www.youtube.com/watch?v=' + r.vid : '';
+  var v = showModal(r.name, parts.join(' · '), 'mvideo', ok ? '<a class="mbtn" href="' + yt + '" target="_blank" rel="noopener noreferrer">Watch on YouTube</a> <span>Video not playing here? Use this button.</span>' : '');
+  if (ok) frame(v, 'https://www.youtube-nocookie.com/embed/' + r.vid + '?autoplay=1&rel=0&playsinline=1&origin=' + encodeURIComponent(location.origin), r.name, 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+  else v.innerHTML = '<div class="mnone">' + (MODE === 'demo' ? 'Sample data has no real videos. In a live report the video plays here.' : 'Google did not return a video link for this creative.') + '</div>';
+}
+function openLanding(i) {
+  var r = (ITEMS.ads || [])[i]; if (!r) return;
+  var ok = r.url && /^https?:\/\/[^\s"'<>]+$/i.test(r.url);
+  var meta = [r.camp, r.h2].filter(Boolean).join(' · ');
+  var v = showModal(r.h1, meta, 'mpage', ok ? '<a class="mbtn" href="' + esc(r.url) + '" target="_blank" rel="noopener noreferrer">Open landing page in a new window</a> <span>' + esc(r.url.replace(/^https?:\/\//i, '')) + '. Some websites do not allow a preview here. If it stays blank, use the button.</span>' : '');
+  if (ok) frame(v, r.url, 'Landing page for ' + r.h1, '');
+  else v.innerHTML = '<div class="mnone">No landing page address was returned for this ad.</div>';
 }
 function closeVideo() {
   var m = document.getElementById('modal'); if (m.hidden) return;

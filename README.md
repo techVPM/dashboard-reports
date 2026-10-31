@@ -168,6 +168,8 @@ To force one client to reload right now: open
 
 `https://YOUR-SITE.netlify.app/THEIR-KEY`, for example `https://vpm-dashboard.netlify.app/sandler-7469`. The older `?k=THEIR-KEY` style still works too.
 
+If a clean link ever shows "Page not found", the build also writes a `_redirects` file and a `404.html` that send any single-word path to the report. Check the Netlify deploy log, section **Redirect rules**, for a line with `/:slug`. The `?k=` link is the fallback while you check.
+
 To use a VPM address such as `reports.videopower.org`: in Netlify, **Domain management, Add a domain**, then add the CNAME record Netlify shows you at your DNS provider.
 
 The link opens on the Overview. They can bookmark it. The date buttons, campaign filter and every table sort work without reloading.
@@ -188,8 +190,14 @@ After a deploy, Netlify also builds `dist/ghl-embed.html`. It is the same report
 - **Videos**, **Ads and searches**: creative, keywords, search terms (and themes), landing pages.
 - **Insights and actions**: what the numbers mean, recommended actions ranked High, Medium and Low, and things worth knowing (tracking gaps, revenue not connected, data delays).
 
+## Version notes
+
+- **1.3**: clean links backed up with `_redirects` and `404.html`; more vertical spacing; client name above the page title; "Updated" time under the client name in the menu; the video popup works again (the site now sends a referrer, which YouTube requires, `Referrer-Policy` in `netlify.toml`); clicking an ad opens its landing page in a popup; keywords and search terms show 8 per page, ads show 10 per page.
+- **1.2**: video popup, wins and grouped insights, paging, client list, clean links.
+
 ## Known limits (good next steps)
 
+- Some websites refuse to be shown inside a popup. The landing page popup then stays blank and the "Open landing page in a new window" button is the fallback.
 - Per-video results come from Google's video report (YouTube and Demand Gen). Performance Max does not break results out by video.
 - Revenue and ROAS need closed sales sent back to Google as offline conversions (for example from GoHighLevel). Until then results are counted in leads or booked calls.
 - Insights are rule based. A natural next step is a nightly Claude-written summary that you approve before clients see it.

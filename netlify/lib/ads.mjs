@@ -160,10 +160,10 @@ const DEVICE = { MOBILE: 'Mobile', DESKTOP: 'Desktop', TABLET: 'Tablet', CONNECT
 export const ITEM_SPECS = [
   {
     kind: 'ads', from: 'ad_group_ad', video: true, order: true, limit: 100,
-    fields: ['campaign.id', 'ad_group.id', 'ad_group.name', 'ad_group_ad.ad.id', 'ad_group_ad.ad.name', 'ad_group_ad.ad.type', 'ad_group_ad.ad.responsive_search_ad.headlines'],
+    fields: ['campaign.id', 'ad_group.id', 'ad_group.name', 'ad_group_ad.ad.id', 'ad_group_ad.ad.name', 'ad_group_ad.ad.type', 'ad_group_ad.ad.final_urls', 'ad_group_ad.ad.responsive_search_ad.headlines'],
     keyFields: ['ad_group.id', 'ad_group_ad.ad.id'],
     key: (r) => r.adGroup?.id + '|' + r.adGroupAd?.ad?.id,
-    item: (r) => ({ campaign_id: r.campaign.id, name: adName(r), detail: r.adGroup?.name || '' }),
+    item: (r) => ({ campaign_id: r.campaign.id, name: adName(r), detail: r.adGroup?.name || '', url: String(r.adGroupAd?.ad?.finalUrls?.[0] || '') }),
   },
   {
     kind: 'videos', from: 'video', video: true, order: true, limit: 60,

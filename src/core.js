@@ -75,7 +75,7 @@ function build(P) {
       var o = { cid: String(r.campaign_id || ''), camp: (byId[String(r.campaign_id)] || {}).name || '', name: r.name || '', detail: r.detail || '' };
       Object.keys(map).forEach(function (k) { o[map[k]] = +r[k] || 0; });
       if (kind === 'videos') { o.dur = r.detail; o.hue = hue(o.name); o.vid = String(r.video_id || ''); o.i = idx; }
-      if (kind === 'ads') { o.h1 = o.name; o.h2 = o.detail; }
+      if (kind === 'ads') { o.h1 = o.name; o.h2 = o.detail; o.url = String(r.url || ''); o.i = idx; }
       return o;
     });
   });

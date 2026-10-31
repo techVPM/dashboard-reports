@@ -85,7 +85,7 @@ function paintCharts() { charts.forEach(function (c) { drawChart(document.getEle
 
 /* ---------- tables ---------- */
 function vOf(c, r) { return c.v(r); }
-var PAGE = 15;
+var TERM_PAGE = 8, AD_PAGE = 10;
 function tbl(id, cols, rows, rowAttr, pageSize) {
   var st = S.sort[id] || ['verdict', -1];
   var c = cols.filter(function (x) { return x.k === st[0]; })[0];
@@ -152,15 +152,18 @@ function vidTable(rows, showCamp) {
   return tbl('videos', cols.concat(outCols(), verdictCol('item', thrItem())), rows);
 }
 function adTable(rows, showCamp) {
-  var cols = [{ k: 'name', l: 'Ad', nm: 1, v: function (r) { return r.h1; }, f: function (r) { return '<div class="ad"><b>' + esc(r.h1) + '</b><small>' + esc(r.h2) + '</small></div>'; } }];
+  var cols = [{ k: 'name', l: 'Ad', nm: 1, v: function (r) { return r.h1; }, f: function (r) {
+    var inner = '<b>' + esc(r.h1) + '</b><small>' + esc(r.h2) + '</small>';
+    return r.url && /^https?:\/\//i.test(r.url) ? '<button type="button" class="ad adbtn" data-ai="' + r.i + '" aria-label="View landing page for ad: ' + esc(r.h1) + '">' + inner + '<em>View landing page</em></button>' : '<div class="ad">' + inner + '</div>';
+  } }];
   if (showCamp) cols.push({ k: 'camp', l: 'Campaign', v: function (r) { return r.camp; }, f: function (r) { return esc(r.camp); } });
-  return tbl('ads', cols.concat(outCols(), trafficCols(), verdictCol('item', thrItem())), rows);
+  return tbl('ads', cols.concat(outCols(), trafficCols(), verdictCol('item', thrItem())), rows, null, AD_PAGE);
 }
 function termTable(id, label, rows) {
   var cols = [{ k: 'name', l: label, nm: 1, v: function (r) { return r.name; }, f: function (r) { return '<b>' + esc(r.name) + '</b>' + (r.detail ? '<br><span class="tag">' + esc(r.detail) + '</span>' : ''); } }];
   cols.push({ k: 'camp', l: 'Campaign', v: function (r) { return r.camp; }, f: function (r) { return esc(r.camp); } });
   var st = S.sort[id] || ['spend', -1];
-  return tbl(id, cols.concat(outCols(), trafficCols(), verdictCol('item', thrItem())), rows, null, PAGE);
+  return tbl(id, cols.concat(outCols(), trafficCols(), verdictCol('item', thrItem())), rows, null, TERM_PAGE);
 }
 
 /* ---------- panels ---------- */

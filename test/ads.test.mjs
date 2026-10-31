@@ -187,3 +187,11 @@ test('client link keys are readable, unique and match each account', () => {
   assert.equal(findClient('Coach-By-Chris-1613', {}).name, 'Coach by Chris');   // capitals do not matter
   assert.equal(findClient('coach-by-chris-9999', {}), null);
 });
+
+test('each ad carries the landing page it leads to', () => {
+  const spec = ITEM_SPECS.find((x) => x.kind === 'ads');
+  assert.ok(spec.fields.includes('ad_group_ad.ad.final_urls'));
+  const it = spec.item({ campaign: { id: '1' }, adGroup: { name: 'G' }, adGroupAd: { ad: { id: '9', finalUrls: ['https://example.com/p'] } } });
+  assert.equal(it.url, 'https://example.com/p');
+  assert.equal(spec.item({ campaign: { id: '1' }, adGroupAd: { ad: { id: '9' } } }).url, '');
+});

@@ -42,7 +42,7 @@ const ITEM_DEFS = {
     1005: [['Still Thinking About It?', '30s', 0.6, 1.1], ['Book Your Free Call', '20s', 0.4, 0.9]],
   },
   ads: {
-    1003: [['Quit Drinking Without Willpower | Book a Free Call', 'Non-Brand | Core', 0.4, 1.1], ['Stop Drinking Coach | Free Strategy Call', 'Non-Brand | Coach', 0.35, 1.0], ['Cut Back or Quit Alcohol | The SHIFT Method', 'Non-Brand | Cut back', 0.25, 0.8]],
+    1003: [['Quit Drinking Without Willpower | Book a Free Call', 'Non-Brand | Core', 0.4, 1.1], ['Stop Drinking Coach | Free Strategy Call', 'Non-Brand | Coach', 0.35, 1.0], ['Cut Back or Quit Alcohol | The SHIFT Method', 'Non-Brand | Cut back', 0.25, 0.8], ['Is Alcohol Running Your Evenings? | Free Call', 'Non-Brand | Test 1', 0.20, 0.50], ['Quit Drinking, Keep Your Social Life', 'Non-Brand | Test 2', 0.18, 0.57], ['A Guide for Grey Area Drinkers | Book a Call', 'Non-Brand | Test 3', 0.17, 0.64], ['Stop Overthinking Drinking | Coach by Chris', 'Non-Brand | Test 4', 0.16, 0.71], ['90 Days Without Alcohol | See How', 'Non-Brand | Test 5', 0.14, 0.78], ['Sober Curious? Start Here | Free Call', 'Non-Brand | Test 6', 0.12, 0.85], ['Tired of Hangovers? | Talk to a Coach', 'Non-Brand | Test 7', 0.11, 0.92], ['Drink Less, Live More | The SHIFT Method', 'Non-Brand | Test 8', 0.10, 0.99]],
     1004: [['Official Site | Quit drinking, keep your life', 'Brand | Exact', 0.65, 1.0], ['Book a Call | Free strategy call', 'Brand | Phrase', 0.35, 1.1]],
   },
   keywords: {
@@ -85,7 +85,7 @@ function buildItems(rows, camps, mode) {
     defs.forEach((d, j) => {
       const dealsJ = out.deals[j];
       items[kind].push({
-        campaign_id: c.id, name: d[0], detail: d[1] || '', ...extra,
+        campaign_id: c.id, name: d[0], detail: d[1] || '', ...(kind === 'ads' ? { url: 'https://example.com/free-call' } : {}), ...extra,
         spend: r2((T.spend * d[2]) / ssum), impressions: out.impressions[j], clicks: out.clicks[j], views: out.views[j],
         conversions: out.conversions[j], leads: out.leads[j], calls: out.calls[j], deals: dealsJ, revenue: dealsJ * 2400,
       });

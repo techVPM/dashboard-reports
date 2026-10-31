@@ -34,6 +34,10 @@ ${script('')}
 </html>
 `;
 writeFileSync(join(root, 'dist', 'index.html'), page);
+// Clean client links such as /coach-by-chris-1613. Two safety nets besides the rule in netlify.toml:
+// a _redirects rule, and a 404.html that is the same report page (Netlify shows it for any unknown address).
+writeFileSync(join(root, 'dist', '_redirects'), '/:slug  /index.html  200\n');
+writeFileSync(join(root, 'dist', '404.html'), page);
 
 // 2. GoHighLevel snippet: same page, but it calls your Netlify API by full address.
 const siteUrl = process.env.VPM_API_URL || (process.env.URL ? process.env.URL.replace(/\/$/, '') + '/api/report' : 'https://YOUR-SITE.netlify.app/api/report');
