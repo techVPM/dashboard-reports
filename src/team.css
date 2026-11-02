@@ -206,3 +206,4 @@
 .vpm.tm .mbox.small .fbtns{margin-top:16px}
 @media (max-width:900px){.vpm.tm .fgrid.g3{grid-template-columns:minmax(0,1fr)}.vpm.tm .srow{grid-template-columns:minmax(0,1fr) 120px auto}}
 .vpm.tm .brand{display:flex;align-items:center;flex-wrap:nowrap;white-space:nowrap}
+.vpm.tm .scopetag{color:var(--c1);font-weight:700}

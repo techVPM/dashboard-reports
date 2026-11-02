@@ -11,6 +11,11 @@ const js = ['core.js', 'insights.js', 'charts.js', 'views.js', 'app.js'].map(rd)
 const fonts = `<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Source+Sans+3:wght@400;600;700&display=swap">`;
+// Browser tab icon. Drop the real VPM icon in public/ as favicon.png (square, 512x512 is ideal) and it is used instead.
+const hasPng = existsSync(join(root, 'public', 'favicon.png'));
+const icons = hasPng
+  ? '<link rel="icon" type="image/png" href="/favicon.png">\n<link rel="apple-touch-icon" href="/favicon.png">'
+  : '<link rel="icon" type="image/svg+xml" href="/favicon.svg">';
 const script = (pre) => `<script>\n${pre}(function(){\n"use strict";\n${js}\n})();\n</script>`;
 
 mkdirSync(join(root, 'dist'), { recursive: true });
@@ -23,6 +28,7 @@ const page = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Performance Report</title>
+${icons}
 ${fonts}
 <style>html,body{margin:0}</style>
 <style>${css}</style>
@@ -48,6 +54,7 @@ for (const [file, title] of [['team.html', 'All Clients | VPM'], ['admin.html', 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>${title}</title>
+${icons}
 ${fonts}
 <style>html,body{margin:0}</style>
 <style>${css}\n${teamCss}</style>
@@ -71,6 +78,6 @@ writeFileSync(join(root, 'dist', 'ghl-embed.html'), embed);
 
 if (existsSync(join(root, 'public'))) {
   // anything extra in /public (for example a logo) is copied as is
-  for (const f of ['favicon.ico']) if (existsSync(join(root, 'public', f))) copyFileSync(join(root, 'public', f), join(root, 'dist', f));
+  for (const f of ['favicon.ico', 'favicon.svg', 'favicon.png']) if (existsSync(join(root, 'public', f))) copyFileSync(join(root, 'public', f), join(root, 'dist', f));
 }
 console.log('built dist/index.html (' + page.length + ' bytes) and dist/ghl-embed.html (' + embed.length + ' bytes)');

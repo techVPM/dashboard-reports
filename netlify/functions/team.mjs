@@ -16,6 +16,7 @@ export default async (req) => {
   const all = await getClients();
   const days = Number(url.searchParams.get('days')) || 30;
   const token = url.searchParams.get('token');
+  const scope = url.searchParams.get('scope') || 'default';
 
   if (token) {
     const c = all.find((x) => x.token === token);
@@ -24,7 +25,7 @@ export default async (req) => {
     try {
       if (!custom && PRE.includes(days)) {
         const hit = await saved(c, days);
-        if (hit) return jsonRes({ row: summarize(c, hit.payload, hit.saved_at) });
+        if (hit) return jsonRes({ row: summarize(c, hit.payload, hit.saved_at, scope) });
       }
       const r = resolveRange(url.searchParams, c.timezone);
       if (r.error) return jsonRes({ error: r.error }, 400);
@@ -36,7 +37,7 @@ export default async (req) => {
         await cachePut(key, hit);
         if (!custom && PRE.includes(payload.meta.range.days) && r.to < r.today) await cachePut(latestKey(c.token, payload.meta.range.days), hit);
       }
-      return jsonRes({ row: summarize(c, hit.payload, hit.saved_at) });
+      return jsonRes({ row: summarize(c, hit.payload, hit.saved_at, scope) });
     } catch (e) {
       return jsonRes({ row: emptyRow(c, 'Could not load: ' + e.message) });
     }
@@ -46,7 +47,7 @@ export default async (req) => {
   const rows = await Promise.all(active.map(async (c) => {
     try {
       const hit = PRE.includes(days) ? await saved(c, days) : null;
-      return hit ? summarize(c, hit.payload, hit.saved_at) : emptyRow(c, 'Not loaded yet');
+      return hit ? summarize(c, hit.payload, hit.saved_at, scope) : emptyRow(c, 'Not loaded yet');
     } catch (e) {
       return emptyRow(c, 'Could not read: ' + e.message);
     }

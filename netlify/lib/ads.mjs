@@ -3,6 +3,8 @@
 // No connector, no per-account limit: any client account under the MCC can be reported on.
 
 import { applyGoals } from './goals.mjs';
+// Bump when the Google queries change, so saved reports built by older code are rebuilt.
+export const DATA_VERSION = '1.9';
 
 const DAY = 864e5;
 export const addDays = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * DAY).toISOString().slice(0, 10);
@@ -265,23 +267,39 @@ const dateWhere = (a, b) => `segments.date BETWEEN '${a}' AND '${b}'`;
 // Paused (and removed) campaigns are left out unless the client has include_paused set.
 export const statusWhere = (client) => (client && client.include_paused ? '' : "campaign.status = 'ENABLED'");
 
+// Google requires most fields used in WHERE to also be in SELECT (for example campaign.status on the video report).
+// Dates and metrics are the exception, and adding segments would split the rows, so only resource fields are added.
+function withWhereFields(fields, where) {
+  const out = fields.slice();
+  for (const w of where) {
+    for (const f of w.match(/\b[a-z_]+(?:\.[a-z_]+)+\b/g) || []) {
+      if (f.startsWith('segments.') || f.startsWith('metrics.')) continue;
+      if (!out.includes(f)) out.push(f);
+    }
+  }
+  return out;
+}
+
 export function baseQuery(spec, from, to, statusClause = '') {
   const where = [dateWhere(from, to), 'metrics.impressions > 0'];
   if (statusClause) where.push(statusClause);
   if (spec.extraWhere) where.push(spec.extraWhere);
-  return `SELECT ${spec.fields.join(', ')}, ${spec.video ? MV : MX}${spec.extraMetrics ? ', ' + spec.extraMetrics.join(', ') : ''} FROM ${spec.from} WHERE ${where.join(' AND ')}` +
+  return `SELECT ${withWhereFields(spec.fields, where).join(', ')}, ${spec.video ? MV : MX}${spec.extraMetrics ? ', ' + spec.extraMetrics.join(', ') : ''} FROM ${spec.from} WHERE ${where.join(' AND ')}` +
     (spec.order ? ` ORDER BY metrics.cost_micros DESC LIMIT ${spec.limit}` : '');
 }
 export function splitQuery(spec, from, to, convField, statusClause = '') {
   const where = [dateWhere(from, to), `metrics.${convField} > 0`];
   if (statusClause) where.push(statusClause);
   if (spec.extraWhere) where.push(spec.extraWhere);
-  return `SELECT ${spec.keyFields.join(', ')}, segments.conversion_action_name, metrics.${convField}, metrics.${convField}_value FROM ${spec.from} WHERE ${where.join(' AND ')}`;
+  return `SELECT ${withWhereFields(spec.keyFields, where).join(', ')}, segments.conversion_action_name, metrics.${convField}, metrics.${convField}_value FROM ${spec.from} WHERE ${where.join(' AND ')}`;
 }
 
 /* ------------------------------------------------------------------ */
 /* Report builder                                                       */
 /* ------------------------------------------------------------------ */
+
+// Campaigns VPM builds or manages have "vpm" in the name.
+export const isVpm = (name) => /vpm/i.test(String(name || ''));
 
 // Conversion names match without regard to capitals, extra spaces or the kind of dash used.
 export const normName = (n) => String(n || '').toLowerCase().replace(/[\u2010-\u2015\u2212]/g, '-').replace(/\s+/g, ' ').trim();
@@ -481,6 +499,7 @@ export async function buildReport({ client: rawClient, from, to, env = process.e
   return {
     meta: {
       client_name: client.name,
+      data_version: DATA_VERSION,
       refreshed_at: now.toISOString(),
       range: { from, to, days: len },
       previous: { from: pfrom, to: pto },
@@ -496,6 +515,7 @@ export async function buildReport({ client: rawClient, from, to, env = process.e
       goals,
       conversion_actions: conversionActions,
       include_paused: !!client.include_paused,
+      default_scope: client.default_scope === 'vpm' ? 'vpm' : 'all',
       notes: client.notes || [],
       actions: client.actions || [],
       term_groups: client.term_groups || {},

@@ -19,7 +19,7 @@ function render() {
   var seg = document.getElementById('typeseg');
   if (types.length > 1) {
     seg.hidden = false;
-    var opts = [['all', 'All campaigns']].concat(types.map(function (x) { return [x, TYPE_LBL[x] || 'Other']; }));
+    var opts = [['all', HASMIX ? 'All types' : 'All campaigns']].concat(types.map(function (x) { return [x, TYPE_LBL[x] || 'Other']; }));
     seg.innerHTML = opts.map(function (o) { return '<button data-type="' + o[0] + '" class="' + (S.type === o[0] ? 'on' : '') + '" aria-pressed="' + (S.type === o[0]) + '">' + o[1] + '</button>'; }).join('');
   } else { seg.hidden = true; S.type = 'all'; }
   var f = { overview: vOverview, weekly: vWeekly, campaigns: vCampaigns, videos: vVideos, ads: vAds, insights: vInsights, campaign: vDetail }[S.view];
@@ -68,8 +68,28 @@ function banners() {
   try { document.title = (META.client_name ? META.client_name + ' ' : '') + 'Performance Report'; } catch (e) { /* ignore */ }
 }
 function fail(msg) { setBusy(false); view.innerHTML = '<div class="panel"><p class="msg">' + esc(msg) + '</p></div>'; drawRangeBar(); }
+// "VPM campaigns" are the ones with vpm in the name. The filter is applied to the data before anything is drawn,
+// so totals, charts, goals and insights all follow it.
+var RAW = null, HASMIX = false;
+function isVpm(n) { return /vpm/i.test(String(n || '')); }
+function scoped(P) {
+  var cs = P.campaigns || [], nv = cs.filter(function (c) { return isVpm(c.name); }).length;
+  HASMIX = nv > 0 && nv < cs.length;
+  if (!S.scope) { var q = ''; try { q = new URLSearchParams(location.search).get('m') || ''; } catch (e) { /* ignore */ } S.scope = q === 'vpm' || q === 'other' || q === 'all' ? q : ((P.meta && P.meta.default_scope) || 'all'); }
+  if (!HASMIX || S.scope === 'all') return P;
+  var keep = {}; cs.forEach(function (c) { if (isVpm(c.name) === (S.scope === 'vpm')) keep[c.id] = 1; });
+  var it = {}; Object.keys(P.items || {}).forEach(function (k) { it[k] = k === 'hours' ? [] : P.items[k].filter(function (r) { return keep[r.campaign_id]; }); });
+  return Object.assign({}, P, { campaigns: cs.filter(function (c) { return keep[c.id]; }), daily: (P.daily || []).filter(function (d) { return keep[d.campaign_id]; }), items: it });
+}
+function drawScope() {
+  var seg = document.getElementById('mgrseg');
+  if (!HASMIX) { seg.hidden = true; return; }
+  seg.hidden = false;
+  seg.innerHTML = [['all', 'All campaigns'], ['vpm', 'VPM campaigns'], ['other', 'Not VPM']].map(function (o) { return '<button data-scope="' + o[0] + '" class="' + (S.scope === o[0] ? 'on' : '') + '" aria-pressed="' + (S.scope === o[0]) + '">' + o[1] + '</button>'; }).join('');
+}
 function apply(P) {
-  build(P); buildMET(); loaded = true;
+  RAW = P;
+  build(scoped(P)); buildMET(); loaded = true; drawScope();
   var h = ''; try { h = location.hash.slice(1); } catch (e) { /* ignore */ }
   if (!S.fresh) { S.fresh = 1; if (VIEWS[h]) S.view = h; else if (h.indexOf('c-') === 0 && camp(h.slice(2))) { S.view = 'campaign'; S.cid = h.slice(2); } }
   if (S.view === 'campaign' && !camp(S.cid)) S.view = 'campaigns';
@@ -98,7 +118,7 @@ function load() {
 
 /* ---------- events ---------- */
 root.addEventListener('click', function (e) {
-  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-ai],[data-page],[data-close],[data-burger]'); if (!t || !root.contains(t)) return;
+  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-ai],[data-page],[data-close],[data-burger],[data-scope]'); if (!t || !root.contains(t)) return;
   if (t.tagName === 'A') e.preventDefault();
   if (t.dataset.range) {
     var m = t.dataset.range;
@@ -114,6 +134,11 @@ root.addEventListener('click', function (e) {
     sd.classList.toggle('open', op); t.setAttribute('aria-expanded', op ? 'true' : 'false'); return;
   }
   if (t.dataset.go || t.dataset.camp) { var sd2 = document.getElementById('side'); if (sd2) sd2.classList.remove('open'); var bg = document.getElementById('burger'); if (bg) bg.setAttribute('aria-expanded', 'false'); }
+  if (t.dataset.scope) {
+    S.scope = t.dataset.scope; S.type = 'all'; if (S.view === 'campaign') S.view = 'campaigns';
+    try { var mp = new URLSearchParams(location.search); mp.set('m', S.scope); history.replaceState(null, '', '?' + mp.toString() + location.hash); } catch (er) { /* ignore */ }
+    return apply(RAW);
+  }
   if (t.dataset.close) return closeVideo();
   if (t.dataset.vi) return openVideo(+t.dataset.vi);
   if (t.dataset.ai) return openLanding(+t.dataset.ai);

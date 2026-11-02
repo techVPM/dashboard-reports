@@ -1,4 +1,4 @@
-import { addDays, daysBetween, todayIn } from './ads.mjs';
+import { addDays, daysBetween, todayIn, DATA_VERSION } from './ads.mjs';
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 export const MAX_DAYS = 400;
@@ -29,8 +29,10 @@ export function presetRange(days, tz) {
 
 // Cached reports are keyed by account, dates, and a fingerprint of the client's settings,
 // so editing a client's targets, notes or conversion mapping shows up on the next load.
+// DATA_VERSION (set in ads.mjs) is part of the key, so saved reports built by older code are not reused.
+export { DATA_VERSION };
 function fingerprint(client) {
-  const s = JSON.stringify([client.name, client.outcomes, client.deal_value, client.conversion_field, client.labels, client.targets, client.notes, client.actions, client.term_groups, client.timezone, client.currency, client.last_change_date]);
+  const s = JSON.stringify([DATA_VERSION, client.name, client.outcomes, client.deal_value, client.conversion_field, client.labels, client.targets, client.notes, client.actions, client.term_groups, client.timezone, client.currency, client.last_change_date, client.goals, client.include_paused, client.default_scope]);
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
   return (h >>> 0).toString(36);

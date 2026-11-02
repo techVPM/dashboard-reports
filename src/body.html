@@ -1,7 +1,8 @@
 <div class="vpm" id="vpm">
 <div class="app">
-  <aside class="side">
+  <aside class="side" id="side">
     <div class="brand">VIDEO POWER<span>MARKETING</span></div>
+    <button type="button" class="burger" id="burger" data-burger="1" aria-label="Menu" aria-expanded="false" aria-controls="nav"><svg viewBox="0 0 20 20" aria-hidden="true"><path class="b1" d="M3 5h14"/><path class="b2" d="M3 10h14"/><path class="b3" d="M3 15h14"/></svg><span>Menu</span></button>
     <nav class="nav" id="nav" aria-label="Report sections"></nav>
     <div class="sidefoot" id="sidefoot">Google Ads performance report</div>
   </aside>
@@ -11,6 +12,7 @@
     <header class="top">
       <div class="ttlblock"><h1 id="cli">Performance report</h1><h2 id="ttl"></h2><p id="sub"></p><p class="updm" id="updm"></p></div>
       <div class="ctl">
+        <div class="seg" id="mgrseg" role="group" aria-label="Who manages the campaigns" hidden></div>
         <div class="seg" id="typeseg" role="group" aria-label="Campaign type" hidden></div>
         <div class="datebox">
           <div class="seg" id="rangeseg" role="group" aria-label="Date range"></div>

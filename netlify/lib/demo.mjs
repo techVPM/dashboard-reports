@@ -1,6 +1,6 @@
 // Synthetic report data in exactly the same shape the live Google Ads builder returns.
 // Used for ?k=demo and ?k=demo-calls so the page can be previewed before any credentials exist.
-import { addDays, daysBetween } from './ads.mjs';
+import { addDays, daysBetween, DATA_VERSION } from './ads.mjs';
 
 function rnd(seed) {
   let h = 2166136261;
@@ -20,11 +20,11 @@ function alloc(total, weights) {
 }
 
 const CAMPS = [
-  { id: '1001', name: 'YouTube Demand Gen | Story Videos', channel: 'DEMAND_GEN', type: 'video', spend: 245, cpm: 17, ctr: 0.008, lead: 0.08, call: 0.28, close: 0.23, trend: 0.25 },
-  { id: '1002', name: 'YouTube In-Stream | Client Stories', channel: 'VIDEO', type: 'video', spend: 172, cpm: 17, ctr: 0.007, lead: 0.08, call: 0.24, close: 0.22, trend: 0.1 },
+  { id: '1001', name: 'VPM | YouTube Demand Gen | Story Videos', channel: 'DEMAND_GEN', type: 'video', spend: 245, cpm: 17, ctr: 0.008, lead: 0.08, call: 0.28, close: 0.23, trend: 0.25 },
+  { id: '1002', name: 'VPM | YouTube In-Stream | Client Stories', channel: 'VIDEO', type: 'video', spend: 172, cpm: 17, ctr: 0.007, lead: 0.08, call: 0.24, close: 0.22, trend: 0.1 },
   { id: '1003', name: 'Search | Non-Brand', channel: 'SEARCH', type: 'search', spend: 142, cpm: 70, ctr: 0.025, lead: 0.065, call: 0.24, close: 0.2, trend: 0.05 },
   { id: '1004', name: 'Search | Brand', channel: 'SEARCH', type: 'search', spend: 22, cpm: 125, ctr: 0.11, lead: 0.07, call: 0.46, close: 0.21, trend: 0.04 },
-  { id: '1005', name: 'Demand Gen | Retargeting', channel: 'DEMAND_GEN', type: 'video', spend: 45, cpm: 15, ctr: 0.0085, lead: 0.07, call: 0.27, close: 0.21, trend: 0.18 },
+  { id: '1005', name: 'VPM | Demand Gen | Retargeting', channel: 'DEMAND_GEN', type: 'video', spend: 45, cpm: 15, ctr: 0.0085, lead: 0.07, call: 0.27, close: 0.21, trend: 0.18 },
   { id: '1006', name: 'Performance Max | Leads', channel: 'PERFORMANCE_MAX', type: 'pmax', spend: 104, cpm: 25, ctr: 0.0035, lead: 0.065, call: 0.13, close: 0.12, trend: -0.15 },
 ];
 
@@ -154,11 +154,11 @@ export function demoReport(token, from, to) {
   const full = mode === 'full';
   return {
     meta: {
-      client_name: full ? 'Sample Client' : 'Sample Coaching Co',
+      client_name: full ? 'Sample Client' : 'Sample Coaching Co', data_version: DATA_VERSION,
       refreshed_at: new Date().toISOString(),
       range: { from, to, days: len },
       previous: { from: pfrom, to: addDays(from, -1) },
-      currency: 'USD', timezone: 'America/Denver', demo: true,
+      currency: 'USD', timezone: 'America/Denver', demo: true, default_scope: 'all',
       has: full ? { leads: true, calls: true, deals: true, revenue: true } : { leads: false, calls: true, deals: false, revenue: false },
       labels: { leads: 'Leads', calls: 'Booked calls', deals: 'Sales' },
       targets: full ? { cpl: 35, cpc: 140, roas: 3, breakeven: 2 } : { cpl: null, cpc: null, roas: null, breakeven: null },

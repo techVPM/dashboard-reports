@@ -320,3 +320,32 @@ test('videos come from the video report, with Demand Gen video assets as a backu
   assert.equal(b.impressions, 100);
   assert.equal(a.views, 10);
 });
+
+test('VPM campaign filter keeps campaigns with vpm in the name', async () => {
+  const { scopePayload, summarize, resolveScope } = await import('../netlify/lib/team.mjs');
+  const p = demoReport('demo', '2026-10-01', '2026-10-30');
+  const v = scopePayload(p, 'vpm'), o = scopePayload(p, 'other'), a = scopePayload(p, 'all');
+  assert.equal(v.mixed, true);
+  assert.ok(v.payload.campaigns.every((c) => /vpm/i.test(c.name)));
+  assert.ok(o.payload.campaigns.every((c) => !/vpm/i.test(c.name)));
+  assert.equal(v.payload.campaigns.length + o.payload.campaigns.length, a.payload.campaigns.length);
+  assert.ok(v.payload.daily.every((d) => v.payload.campaigns.some((c) => c.id === d.campaign_id)));
+  const sv = summarize({ token: 'x-1', name: 'X', customer_id: '1', default_scope: 'vpm' }, p);
+  const sa = summarize({ token: 'x-1', name: 'X', customer_id: '1' }, p);
+  assert.equal(sv.scope, 'vpm');
+  assert.ok(sv.spend < sa.spend);
+  assert.equal(resolveScope({ default_scope: 'vpm' }, 'all'), 'all');
+});
+
+test('every resource field used in WHERE is also in SELECT (Google requires it, for example campaign.status)', () => {
+  for (const s of ITEM_SPECS) {
+    for (const q of [baseQuery(s, '2026-10-01', '2026-10-30', "campaign.status = 'ENABLED'"), splitQuery(s, '2026-10-01', '2026-10-30', 'conversions', "campaign.status = 'ENABLED'")]) {
+      const [sel, where] = q.split(' WHERE ');
+      for (const f of where.match(/\b[a-z_]+(?:\.[a-z_]+)+\b/g) || []) {
+        if (f.startsWith('segments.') || f.startsWith('metrics.')) continue;
+        assert.ok(sel.includes(f), s.kind + ': ' + f + ' missing from SELECT');
+      }
+      assert.doesNotMatch(sel, /segments\.date/);
+    }
+  }
+});

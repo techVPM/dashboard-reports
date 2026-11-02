@@ -4,6 +4,7 @@ import { getClients } from '../lib/store.mjs';
 import { savedReport, PRE } from '../lib/saved.mjs';
 import { isCreative, jsonRes } from '../lib/auth.mjs';
 import { applyGoals } from '../lib/goals.mjs';
+import { scopePayload, resolveScope } from '../lib/team.mjs';
 
 const r2 = (v) => Math.round(v * 100) / 100;
 const r4 = (v) => Math.round(v * 10000) / 10000;
@@ -50,6 +51,7 @@ export default async (req) => {
   if (!isCreative(req)) return jsonRes({ error: 'Wrong password.' }, 401);
   const url = new URL(req.url);
   const days = PRE.includes(Number(url.searchParams.get('days'))) ? Number(url.searchParams.get('days')) : 30;
+  const scope = url.searchParams.get('scope') || 'default';
   const active = (await getClients()).filter((c) => c.token && c.customer_id && !c.disabled);
   const missing = [], videos = [], ranges = [];
   await Promise.all(active.map(async (c) => {
@@ -57,7 +59,7 @@ export default async (req) => {
       const hit = await savedReport(c, days);
       if (!hit) { missing.push(c.name); return; }
       if (hit.payload.meta?.range) ranges.push(hit.payload.meta.range);
-      videos.push(...videoRows(c, hit.payload));
+      videos.push(...videoRows(c, scopePayload(hit.payload, resolveScope(c, scope)).payload));
     } catch { missing.push(c.name); }
   }));
   videos.sort((a, b) => b.impressions - a.impressions);

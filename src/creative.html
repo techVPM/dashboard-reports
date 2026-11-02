@@ -6,7 +6,7 @@
   </header>
   <div class="thead">
     <div><h1>Creative Hub</h1><p class="sub" id="tsub">Every video running for active clients, and how each one performs.</p></div>
-    <div class="tctl" id="tctl" hidden><div class="seg" id="rng" role="group" aria-label="Date range"></div></div>
+    <div class="tctl" id="tctl" hidden><div class="seg" id="scp" role="group" aria-label="Which campaigns"></div><div class="seg" id="rng" role="group" aria-label="Date range"></div></div>
   </div>
   <form class="panel gate" id="gate" hidden>
     <h2>Team sign in</h2>
@@ -17,7 +17,7 @@
   <section class="panel filters" id="filters" hidden>
     <label class="fld"><span>Client</span><select id="fclient"></select></label>
     <label class="fld"><span>Search titles</span><input id="fq" type="search" placeholder="For example hook 2, testimonial, 9x16"></label>
-    <label class="fld"><span>Minimum impressions</span><select id="fmin"><option value="0">Any</option><option value="500">500</option><option value="1000" selected>1,000</option><option value="5000">5,000</option><option value="20000">20,000</option></select></label>
+    <label class="fld"><span>Minimum impressions</span><select id="fmin"><option value="0" selected>Any</option><option value="500">500</option><option value="1000">1,000</option><option value="5000">5,000</option><option value="20000">20,000</option></select></label>
     <div class="fbtns2"><button type="button" class="obtn" id="csv">Download CSV</button></div>
   </section>
   <section id="sum" class="sumrow"></section>
@@ -35,7 +35,7 @@
   var KEY = 'vpm_admin_key', pw = '';
   try { pw = localStorage.getItem(KEY) || ''; } catch (e) { /* private mode */ }
   var $ = function (id) { return document.getElementById(id); };
-  var DATA = null, DAYS = 30, SORT = ['ctr', -1], SHOW = 50, VIEWROWS = [];
+  var SCOPE = 'vpm', DATA = null, DAYS = 30, SORT = ['ctr', -1], SHOW = 50, VIEWROWS = [];
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function money(v) { return v == null ? 'n/a' : '$' + Math.round(v).toLocaleString('en-US'); }
   function money2(v) { return v == null ? 'n/a' : '$' + (v >= 1000 ? Math.round(v).toLocaleString('en-US') : v.toFixed(2)); }
@@ -52,12 +52,13 @@
   function load() {
     if (!pw) return gate();
     $('list').innerHTML = '<div class="panel"><p class="msg">Loading every video</p></div>';
-    api('/api/creative?days=' + DAYS).then(function (j) {
+    api('/api/creative?days=' + DAYS + '&scope=' + SCOPE).then(function (j) {
       DATA = j; $('gate').hidden = true; $('gerr').hidden = true; $('out').hidden = false; $('filters').hidden = false; $('tctl').hidden = false;
       var cur = $('fclient').value || 'all';
       $('fclient').innerHTML = '<option value="all">All clients</option>' + j.clients.map(function (c) { return '<option' + (c === cur ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
+      $('scp').innerHTML = [['vpm', 'VPM campaigns'], ['all', 'All campaigns'], ['other', 'Not VPM']].map(function (o) { return '<button type="button" data-s="' + o[0] + '" class="' + (SCOPE === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('');
       $('rng').innerHTML = [[7, 'Last 7 days'], [30, 'Last 30 days'], [90, 'Last 90 days']].map(function (o) { return '<button type="button" data-d="' + o[0] + '" class="' + (DAYS === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('');
-      $('tsub').textContent = (j.range ? dlab(j.range.from) + ' to ' + dlab(j.range.to) + '. ' : '') + 'Every video running for active clients. Same video in several campaigns is added together.';
+      $('tsub').textContent = (j.range ? dlab(j.range.from) + ' to ' + dlab(j.range.to) + '. ' : '') + 'Every video running for active clients' + (SCOPE === 'vpm' ? ', in VPM campaigns (vpm in the campaign name)' : SCOPE === 'other' ? ', in campaigns without vpm in the name' : '') + '. Same video in several campaigns is added together.';
       $('foot').textContent = j.missing.length ? 'No saved data yet for: ' + j.missing.join(', ') + '. It fills in after the next 10 am refresh, or open that client on the All clients page and press Load now.' : '';
       draw();
     }).catch(function (e) { if (e && e.auth) gate('That password did not work.'); else $('list').innerHTML = '<div class="panel"><p class="msg">' + esc(e.message) + '</p></div>'; });
@@ -87,10 +88,10 @@
       var L = rows.filter(function (v) { return v[k] != null && (!min || min(v)); }).sort(function (a, b) { return low ? a[k] - b[k] : b[k] - a[k]; }).slice(0, 3);
       return '<div class="panel lead"><h3>' + label + '</h3><p class="sub">' + sub + '</p>' + (L.length ? '<ol>' + L.map(function (v) { return '<li><button type="button" data-play="' + esc(v.video_id) + '" data-title="' + esc(v.title) + '" data-meta="' + esc(v.client) + '"><b>' + f(v[k]) + '</b><span>' + esc(v.title) + '<small>' + esc(v.client) + '</small></span></button></li>'; }).join('') + '</ol>' : '<p class="msg small">Not enough data yet.</p>') + '</div>';
     }
-    return top('ctr', 'Best click-through rate', function (x) { return pct(x); }, false, null, 'Hooks that make people click') +
+    return top('ctr', 'Best click-through rate', function (x) { return pct(x); }, false, function (v) { return v.impressions >= 1000; }, 'At least 1,000 impressions') +
       top('cvr', 'Best conversion rate', function (x) { return pct(x, 1); }, false, function (v) { return v.clicks >= 30; }, 'At least 30 clicks') +
       top('cpa', 'Lowest cost per conversion', money2, true, function (v) { return v.results >= 2; }, 'At least 2 conversions') +
-      top('p100', 'Most watched to the end', function (x) { return pct(x, 0); }, false, null, 'Share of impressions watched to 100%');
+      top('p100', 'Most watched to the end', function (x) { return pct(x, 0); }, false, function (v) { return v.impressions >= 1000; }, 'Share watched to 100%, 1,000+ impressions');
   }
   function draw() {
     var rows = filtered();
@@ -128,7 +129,8 @@
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('modal').hidden) close(); });
   document.addEventListener('click', function (e) {
     if (e.target === $('modal')) return close();
-    var t = e.target.closest('[data-d],[data-sort],[data-more],[data-play],[data-close]'); if (!t) return;
+    var t = e.target.closest('[data-d],[data-sort],[data-more],[data-play],[data-close],[data-s]'); if (!t) return;
+    if (t.dataset.s) { SCOPE = t.dataset.s; return load(); }
     if (t.dataset.close) return close();
     if (t.dataset.d) { DAYS = Number(t.dataset.d); return load(); }
     if (t.dataset.sort) { var k = t.dataset.sort; SORT = SORT[0] === k ? [k, -SORT[1]] : [k, k === 'title' || k === 'client' || k === 'cpa' ? 1 : -1]; return draw(); }

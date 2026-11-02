@@ -38,7 +38,7 @@
   var TZ = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific'], ['America/Anchorage', 'Alaska'], ['Pacific/Honolulu', 'Hawaii']];
   var TYPES = [['video', 'Video (YouTube and Demand Gen)'], ['search', 'Search'], ['pmax', 'Performance Max'], ['search+pmax', 'Search and Performance Max'], ['shopping', 'Shopping'], ['display', 'Display']];
   var TYPE_SHORT = { video: 'Video', search: 'Search', pmax: 'PMax', 'search+pmax': 'Search and PMax', shopping: 'Shopping', display: 'Display' };
-  var FORM_KEYS = ['name', 'customer_id', 'token', 'timezone', 'disabled', 'include_paused', 'goals', 'notes', 'last_change_date', 'ads_url'];
+  var FORM_KEYS = ['name', 'customer_id', 'token', 'timezone', 'default_scope', 'disabled', 'include_paused', 'goals', 'notes', 'last_change_date', 'ads_url'];
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function slug(n, id) { return String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '-' + String(id || '').replace(/\D/g, '').slice(-4); }
   function money(v) { return '$' + Math.round(Number(v)).toLocaleString('en-US'); }
@@ -76,6 +76,7 @@
     if (g.weekly_conversions) out.push(g.weekly_conversions + ' ' + lbl.toLowerCase() + ' a week');
     if (g.monthly_conversions) out.push(g.monthly_conversions + ' ' + lbl.toLowerCase() + ' a month');
     if (g.roas) out.push(g.roas + 'x return');
+    if (c && c.default_scope === 'vpm') out.push('VPM campaigns only');
     return out;
   }
   function drawList() {
@@ -117,6 +118,7 @@
         f('Client name', 'f_name', CUR.name) +
         f('Google Ads ID', 'f_cid', CUR.customer_id, '', 'text', '123-456-7890') +
         '<label class="fld"><span>Ads account time zone</span><select id="f_tz">' + TZ.map(function (z) { return '<option value="' + z[0] + '"' + ((CUR.timezone || 'America/Denver') === z[0] ? ' selected' : '') + '>' + z[1] + '</option>'; }).join('') + '</select></label>' +
+        '<label class="fld wide"><span>Campaigns we manage</span><select id="f_scope"><option value="all"' + (CUR.default_scope === 'vpm' ? '' : ' selected') + '>All campaigns in the account</option><option value="vpm"' + (CUR.default_scope === 'vpm' ? ' selected' : '') + '>Only campaigns with VPM in the name</option></select><small>Sets what the client report, goals and team dashboard show first. Anyone can still switch between VPM, not VPM and all campaigns.</small></label>' +
       '</div>') +
 
       section('Goal', 'What a good result looks like for this client.', '<div class="fgrid g3">' +
@@ -165,6 +167,7 @@
     var c = Object.assign({}, adv);
     c.name = val('f_name'); c.customer_id = val('f_cid'); c.token = val('f_tok') || slug(c.name, c.customer_id);
     c.timezone = val('f_tz');
+    if (val('f_scope') === 'vpm') c.default_scope = 'vpm';
     if ($('f_paused').checked) c.include_paused = true;
     if (!$('f_active').checked) c.disabled = true;
     var g = {}, cpa = val('g_cpa');

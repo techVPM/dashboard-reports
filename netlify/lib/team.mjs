@@ -1,6 +1,23 @@
 // Turns a saved 30-day report into one row of the team dashboard, judged against the client's goals.
 import { applyGoals, cleanGoals } from './goals.mjs';
-import { normName, digits } from './ads.mjs';
+import { normName, digits, isVpm } from './ads.mjs';
+
+// Keep only VPM campaigns ("vpm" in the name), only the others, or everything.
+// scope 'default' uses the client's own setting.
+export function resolveScope(client, scope) {
+  if (scope === 'vpm' || scope === 'other' || scope === 'all') return scope;
+  return client.default_scope === 'vpm' ? 'vpm' : 'all';
+}
+export function scopePayload(payload, scope) {
+  const cs = payload.campaigns || [];
+  const nv = cs.filter((c) => isVpm(c.name)).length;
+  const mixed = nv > 0 && nv < cs.length;
+  if (!mixed || scope === 'all') return { payload, mixed, vpmCount: nv };
+  const keep = new Set(cs.filter((c) => isVpm(c.name) === (scope === 'vpm')).map((c) => c.id));
+  const items = {};
+  for (const [k, list] of Object.entries(payload.items || {})) items[k] = k === 'hours' ? [] : list.filter((r) => keep.has(r.campaign_id));
+  return { payload: { ...payload, campaigns: cs.filter((c) => keep.has(c.id)), daily: (payload.daily || []).filter((d) => keep.has(d.campaign_id)), items }, mixed, vpmCount: nv };
+}
 
 const r2 = (v) => Math.round(v * 100) / 100;
 const RANK = { bad: 3, warn: 2, good: 1, none: 0 };
@@ -20,7 +37,9 @@ function grade(kind, actual, goal, extra) {
   return 'none';
 }
 
-export function summarize(client, payload, savedAt) {
+export function summarize(client, rawPayload, savedAt, scopeIn = 'default') {
+  const scope = resolveScope(client, scopeIn);
+  const { payload, mixed } = scopePayload(rawPayload, scope);
   const { goals } = applyGoals(client);
   const meta = payload.meta || {};
   const from = meta.range?.from, days = meta.range?.days || 30, scale = 30 / days;
@@ -73,6 +92,7 @@ export function summarize(client, payload, savedAt) {
     checks, overall, goal_note: goals.note, actions, missing_conversions: missing, campaigns: camps.slice(0, 12),
     has_goals: goals.any,
     warnings: meta.warnings || [],
+    scope: mixed ? scope : 'all', mixed,
   };
 }
 

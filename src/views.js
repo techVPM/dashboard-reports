@@ -1,5 +1,5 @@
 /* ===== views ===== */
-var S = { view: 'overview', cid: null, type: 'all', scn: 0, met: { o: null, t: null, cd: null }, range: { mode: '30', from: '', to: '' }, page: {}, sort: { keywords: ['spend', -1], terms: ['spend', -1], 'keywords-d': ['spend', -1], 'terms-d': ['spend', -1], themes: ['spend', -1], landing: ['spend', -1] } };
+var S = { view: 'overview', cid: null, type: 'all', scn: 0, met: { o: null, t: null, cd: null }, range: { mode: '30', from: '', to: '' }, page: {}, scope: null, sort: { keywords: ['spend', -1], terms: ['spend', -1], 'keywords-d': ['spend', -1], 'terms-d': ['spend', -1], themes: ['spend', -1], landing: ['spend', -1] } };
 var VIEWS = {
   overview: ['Overview', 'How ad spend turns into results'],
   weekly: ['Week by week', 'Every key number, one week at a time'],
