@@ -112,6 +112,7 @@ function buildItems(rows, camps, mode) {
   if (mode === 'calls') {
     for (const list of Object.values(items)) for (const it of list) { it.leads = 0; it.deals = 0; it.revenue = 0; }
   }
+  items.videos.forEach((v, i) => { const s = 0.35 + ((i * 37) % 30) / 100; v.p25 = r2(s); v.p50 = r2(s * 0.62); v.p100 = r2(s * 0.28); });
   for (const k of Object.keys(items)) items[k].sort((a, b) => b.spend - a.spend);
   return items;
 }

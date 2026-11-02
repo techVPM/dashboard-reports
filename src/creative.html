@@ -1,0 +1,140 @@
+<div class="vpm tm cr" id="vpm">
+<div class="wrap">
+  <header class="tbar">
+    <div class="brand">VIDEO POWER<span>MARKETING</span><em class="hubname">Creative Hub</em></div>
+    <div class="tbtns"><a class="tlink" href="/team">All clients</a><button type="button" class="tlink" id="out" hidden>Sign out</button></div>
+  </header>
+  <div class="thead">
+    <div><h1>Creative Hub</h1><p class="sub" id="tsub">Every video running for active clients, and how each one performs.</p></div>
+    <div class="tctl" id="tctl" hidden><div class="seg" id="rng" role="group" aria-label="Date range"></div></div>
+  </div>
+  <form class="panel gate" id="gate" hidden>
+    <h2>Team sign in</h2>
+    <p class="sub">Use the creative password (CREATIVE_PASSWORD in Netlify) or the admin password.</p>
+    <div class="grow"><input type="password" id="pw" autocomplete="current-password" aria-label="Password" placeholder="Password"><button class="mbtn" type="submit">Sign in</button></div>
+    <p class="err" id="gerr" hidden></p>
+  </form>
+  <section class="panel filters" id="filters" hidden>
+    <label class="fld"><span>Client</span><select id="fclient"></select></label>
+    <label class="fld"><span>Search titles</span><input id="fq" type="search" placeholder="For example hook 2, testimonial, 9x16"></label>
+    <label class="fld"><span>Minimum impressions</span><select id="fmin"><option value="0">Any</option><option value="500">500</option><option value="1000" selected>1,000</option><option value="5000">5,000</option><option value="20000">20,000</option></select></label>
+    <div class="fbtns2"><button type="button" class="obtn" id="csv">Download CSV</button></div>
+  </section>
+  <section id="sum" class="sumrow"></section>
+  <section id="leaders" class="leaders"></section>
+  <section id="list"><div class="panel"><p class="msg">Loading</p></div></section>
+  <p class="sub" id="foot"></p>
+</div>
+<div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mtitle">
+  <div class="mbox"><div class="mhead"><div><h2 id="mtitle"></h2><p id="mmeta"></p></div><button type="button" class="mclose" data-close="1" aria-label="Close">&times;</button></div><div class="mvideo" id="mvideo"></div><p class="mlink" id="mlink"></p></div>
+</div>
+</div>
+<script>
+(function () {
+  'use strict';
+  var KEY = 'vpm_admin_key', pw = '';
+  try { pw = localStorage.getItem(KEY) || ''; } catch (e) { /* private mode */ }
+  var $ = function (id) { return document.getElementById(id); };
+  var DATA = null, DAYS = 30, SORT = ['ctr', -1], SHOW = 50, VIEWROWS = [];
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function money(v) { return v == null ? 'n/a' : '$' + Math.round(v).toLocaleString('en-US'); }
+  function money2(v) { return v == null ? 'n/a' : '$' + (v >= 1000 ? Math.round(v).toLocaleString('en-US') : v.toFixed(2)); }
+  function int(v) { return v == null ? 'n/a' : Math.round(v).toLocaleString('en-US'); }
+  function pct(v, d) { return v == null ? 'n/a' : (v * 100).toFixed(d == null ? 2 : d) + '%'; }
+  function dlab(iso) { return iso ? new Date(iso + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : ''; }
+  function vidOk(id) { return /^[A-Za-z0-9_-]{6,20}$/.test(id || ''); }
+
+  function api(path) { return fetch(path, { headers: { 'x-admin-key': pw } }).then(function (r) { return r.json().then(function (j) { if (r.status === 401) throw { auth: 1 }; if (!r.ok) throw new Error(j.error || 'Failed'); return j; }); }); }
+  function gate(msg) { $('gate').hidden = false; $('filters').hidden = true; $('tctl').hidden = true; $('list').innerHTML = ''; $('sum').innerHTML = ''; $('leaders').innerHTML = ''; $('out').hidden = true; if (msg) { $('gerr').hidden = false; $('gerr').textContent = msg; } $('pw').focus(); }
+  $('gate').addEventListener('submit', function (e) { e.preventDefault(); pw = $('pw').value.trim(); if (!pw) return; try { localStorage.setItem(KEY, pw); } catch (er) { /* ignore */ } load(); });
+  $('out').addEventListener('click', function () { try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ } pw = ''; gate(); });
+
+  function load() {
+    if (!pw) return gate();
+    $('list').innerHTML = '<div class="panel"><p class="msg">Loading every video</p></div>';
+    api('/api/creative?days=' + DAYS).then(function (j) {
+      DATA = j; $('gate').hidden = true; $('gerr').hidden = true; $('out').hidden = false; $('filters').hidden = false; $('tctl').hidden = false;
+      var cur = $('fclient').value || 'all';
+      $('fclient').innerHTML = '<option value="all">All clients</option>' + j.clients.map(function (c) { return '<option' + (c === cur ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
+      $('rng').innerHTML = [[7, 'Last 7 days'], [30, 'Last 30 days'], [90, 'Last 90 days']].map(function (o) { return '<button type="button" data-d="' + o[0] + '" class="' + (DAYS === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('');
+      $('tsub').textContent = (j.range ? dlab(j.range.from) + ' to ' + dlab(j.range.to) + '. ' : '') + 'Every video running for active clients. Same video in several campaigns is added together.';
+      $('foot').textContent = j.missing.length ? 'No saved data yet for: ' + j.missing.join(', ') + '. It fills in after the next 10 am refresh, or open that client on the All clients page and press Load now.' : '';
+      draw();
+    }).catch(function (e) { if (e && e.auth) gate('That password did not work.'); else $('list').innerHTML = '<div class="panel"><p class="msg">' + esc(e.message) + '</p></div>'; });
+  }
+
+  var COLS = [
+    ['title', 'Video', 0], ['client', 'Client', 0], ['impressions', 'Impr.', 1], ['clicks', 'Clicks', 1], ['ctr', 'CTR', 1], ['view_rate', 'View rate', 1], ['p100', 'Watched to end', 1],
+    ['results', 'Conv.', 1], ['cvr', 'Conv. rate', 1], ['cpa', 'Cost per conv.', 1], ['spend', 'Spend', 1]
+  ];
+  function filtered() {
+    var c = $('fclient').value, q = $('fq').value.trim().toLowerCase(), min = Number($('fmin').value) || 0;
+    return DATA.videos.filter(function (v) { return (c === 'all' || v.client === c) && v.impressions >= min && (!q || (v.title + ' ' + v.campaigns.join(' ')).toLowerCase().indexOf(q) > -1); });
+  }
+  // Top quarter green, bottom quarter red, compared with the other videos on screen.
+  function bands(rows, k, low) {
+    var vals = rows.map(function (r) { return r[k]; }).filter(function (x) { return x != null; }).sort(function (a, b) { return a - b; });
+    if (vals.length < 4) return function () { return ''; };
+    var lo = vals[Math.floor(vals.length * 0.25)], hi = vals[Math.floor(vals.length * 0.75)];
+    return function (v) { if (v == null) return ''; var good = low ? v <= lo : v >= hi, bad = low ? v >= hi : v <= lo; return good ? 'good' : bad ? 'bad' : ''; };
+  }
+  function thumb(v) {
+    var img = vidOk(v.video_id) ? 'background-image:url(https://i.ytimg.com/vi/' + v.video_id + '/mqdefault.jpg)' : '';
+    return '<button type="button" class="vth" data-play="' + esc(v.video_id) + '" data-title="' + esc(v.title) + '" data-meta="' + esc(v.client + ' · ' + v.campaigns.join(', ')) + '" aria-label="Play ' + esc(v.title) + '"><span class="pic" style="' + img + '"><svg viewBox="0 0 16 16"><path d="M5 3l8 5-8 5z"/></svg>' + (v.duration ? '<em>' + esc(v.duration) + '</em>' : '') + '</span><span class="tt"><b>' + esc(v.title) + '</b><small>' + esc(v.campaigns.slice(0, 2).join(', ') + (v.campaigns.length > 2 ? ' +' + (v.campaigns.length - 2) : '')) + '</small></span></button>';
+  }
+  function leaders(rows) {
+    function top(k, label, f, low, min, sub) {
+      var L = rows.filter(function (v) { return v[k] != null && (!min || min(v)); }).sort(function (a, b) { return low ? a[k] - b[k] : b[k] - a[k]; }).slice(0, 3);
+      return '<div class="panel lead"><h3>' + label + '</h3><p class="sub">' + sub + '</p>' + (L.length ? '<ol>' + L.map(function (v) { return '<li><button type="button" data-play="' + esc(v.video_id) + '" data-title="' + esc(v.title) + '" data-meta="' + esc(v.client) + '"><b>' + f(v[k]) + '</b><span>' + esc(v.title) + '<small>' + esc(v.client) + '</small></span></button></li>'; }).join('') + '</ol>' : '<p class="msg small">Not enough data yet.</p>') + '</div>';
+    }
+    return top('ctr', 'Best click-through rate', function (x) { return pct(x); }, false, null, 'Hooks that make people click') +
+      top('cvr', 'Best conversion rate', function (x) { return pct(x, 1); }, false, function (v) { return v.clicks >= 30; }, 'At least 30 clicks') +
+      top('cpa', 'Lowest cost per conversion', money2, true, function (v) { return v.results >= 2; }, 'At least 2 conversions') +
+      top('p100', 'Most watched to the end', function (x) { return pct(x, 0); }, false, null, 'Share of impressions watched to 100%');
+  }
+  function draw() {
+    var rows = filtered();
+    var tot = rows.reduce(function (a, v) { a.s += v.spend; a.i += v.impressions; a.c += v.clicks; a.r += v.results; return a; }, { s: 0, i: 0, c: 0, r: 0 });
+    $('sum').innerHTML = [['Videos', int(rows.length)], ['Impressions', int(tot.i)], ['Clicks', int(tot.c)], ['Average CTR', tot.i ? pct(tot.c / tot.i) : 'n/a'], ['Conversions', int(tot.r)], ['Spend', money(tot.s)]].map(function (x) { return '<div class="kpi"><div class="l">' + x[0] + '</div><div class="v">' + x[1] + '</div></div>'; }).join('');
+    $('leaders').innerHTML = rows.length ? leaders(rows) : '';
+    var k = SORT[0], d = SORT[1];
+    rows.sort(function (a, b) { var x = a[k], y = b[k]; if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (typeof x === 'string' ? x.localeCompare(y) : x - y) * d; });
+    VIEWROWS = rows;
+    var bC = bands(rows, 'ctr'), bV = bands(rows, 'view_rate'), bE = bands(rows, 'p100'), bR = bands(rows, 'cvr'), bP = bands(rows, 'cpa', true);
+    var head = '<thead><tr>' + COLS.map(function (c) { var on = SORT[0] === c[0]; return '<th class="' + (c[2] ? 'n' : '') + '"><button type="button" data-sort="' + c[0] + '">' + c[1] + (on ? (SORT[1] > 0 ? ' ▲' : ' ▼') : '') + '</button></th>'; }).join('') + '</tr></thead>';
+    var body = rows.slice(0, SHOW).map(function (v) {
+      return '<tr><td class="vidc">' + thumb(v) + '</td><td class="cl">' + esc(v.client) + '<br><span class="tag">' + esc(v.types.join(', ')) + '</span></td><td class="n">' + int(v.impressions) + '</td><td class="n">' + int(v.clicks) + '</td><td class="n ' + bC(v.ctr) + '">' + pct(v.ctr) + '</td><td class="n ' + bV(v.view_rate) + '">' + pct(v.view_rate, 1) + '</td><td class="n ' + bE(v.p100) + '">' + pct(v.p100, 0) + '</td><td class="n" title="' + esc(v.result_label) + '">' + int(v.results) + '</td><td class="n ' + bR(v.cvr) + '">' + pct(v.cvr, 1) + '</td><td class="n ' + bP(v.cpa) + '">' + money2(v.cpa) + '</td><td class="n">' + money(v.spend) + '</td></tr>';
+    }).join('');
+    $('list').innerHTML = rows.length ? '<div class="panel tpanel"><p class="sub legend2">Green is the top quarter of the videos shown, red the bottom quarter. Conv. counts each client\'s main result. Click a column to sort, click a video to play it.</p><div class="tw"><table class="t ct">' + head + '<tbody>' + body + '</tbody></table></div>' + (rows.length > SHOW ? '<div class="more"><button type="button" class="obtn" data-more="1">Show more (' + (rows.length - SHOW) + ' left)</button></div>' : '') + '</div>' : '<div class="panel"><p class="msg">No videos match. Try a lower minimum impressions or another client.</p></div>';
+  }
+  function csv() {
+    var h = ['Client', 'Video', 'YouTube ID', 'Campaigns', 'Impressions', 'Clicks', 'CTR', 'Views', 'View rate', 'Watched 25%', 'Watched 50%', 'Watched 100%', 'Conversions (main result)', 'Conversion rate', 'Cost per conversion', 'Spend'];
+    var lines = [h].concat(VIEWROWS.map(function (v) { return [v.client, v.title, v.video_id, v.campaigns.join(' | '), v.impressions, v.clicks, v.ctr, v.views, v.view_rate, v.p25, v.p50, v.p100, v.results, v.cvr, v.cpa, v.spend]; }));
+    var text = lines.map(function (r) { return r.map(function (x) { x = x == null ? '' : String(x); return /[",\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; }).join(','); }).join('\n');
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = 'vpm-videos-' + DAYS + 'd.csv'; document.body.appendChild(a); a.click(); a.remove();
+  }
+  function play(id, title, meta) {
+    $('mtitle').textContent = title; $('mmeta').textContent = meta || '';
+    if (vidOk(id)) {
+      $('mvideo').innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1&rel=0&playsinline=1&origin=' + encodeURIComponent(location.origin) + '" title="' + esc(title) + '" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>';
+      $('mlink').innerHTML = '<a class="mbtn" href="https://www.youtube.com/watch?v=' + id + '" target="_blank" rel="noopener">Watch on YouTube</a>';
+    } else { $('mvideo').innerHTML = '<p class="msg">Google did not share a YouTube link for this video.</p>'; $('mlink').innerHTML = ''; }
+    $('modal').hidden = false;
+  }
+  function close() { $('modal').hidden = true; $('mvideo').innerHTML = ''; }
+  ['fclient', 'fmin'].forEach(function (id) { $(id).addEventListener('change', function () { SHOW = 50; draw(); }); });
+  $('fq').addEventListener('input', function () { SHOW = 50; draw(); });
+  $('csv').addEventListener('click', csv);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('modal').hidden) close(); });
+  document.addEventListener('click', function (e) {
+    if (e.target === $('modal')) return close();
+    var t = e.target.closest('[data-d],[data-sort],[data-more],[data-play],[data-close]'); if (!t) return;
+    if (t.dataset.close) return close();
+    if (t.dataset.d) { DAYS = Number(t.dataset.d); return load(); }
+    if (t.dataset.sort) { var k = t.dataset.sort; SORT = SORT[0] === k ? [k, -SORT[1]] : [k, k === 'title' || k === 'client' || k === 'cpa' ? 1 : -1]; return draw(); }
+    if (t.dataset.more) { SHOW += 50; return draw(); }
+    if (t.dataset.play != null) return play(t.dataset.play, t.dataset.title, t.dataset.meta);
+  });
+  load();
+})();
+</script>

@@ -36,11 +36,11 @@ ${script('')}
 writeFileSync(join(root, 'dist', 'index.html'), page);
 // Clean client links such as /coach-by-chris-1613. Two safety nets besides the rule in netlify.toml:
 // a _redirects rule, and a 404.html that is the same report page (Netlify shows it for any unknown address).
-writeFileSync(join(root, 'dist', '_redirects'), '/team  /team.html  200\n/admin  /admin.html  200\n/:slug  /index.html  200\n');
+writeFileSync(join(root, 'dist', '_redirects'), '/team  /team.html  200\n/admin  /admin.html  200\n/creative  /creative.html  200\n/:slug  /index.html  200\n');
 
 // Team pages: the all-clients dashboard (/team) and the clients and goals editor (/admin).
 const teamCss = rd('team.css');
-for (const [file, title] of [['team.html', 'All Clients | VPM'], ['admin.html', 'Clients and Goals | VPM']]) {
+for (const [file, title] of [['team.html', 'All Clients | VPM'], ['admin.html', 'Clients and Goals | VPM'], ['creative.html', 'Creative Hub | VPM']]) {
   writeFileSync(join(root, 'dist', file), `<!doctype html>
 <html lang="en">
 <head>

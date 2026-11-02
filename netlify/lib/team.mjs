@@ -72,6 +72,7 @@ export function summarize(client, payload, savedAt) {
     by_type: Object.fromEntries(Object.entries(byType).map(([k, v]) => [TYPE_LBL[k] || k, r2(v)])),
     checks, overall, goal_note: goals.note, actions, missing_conversions: missing, campaigns: camps.slice(0, 12),
     has_goals: goals.any,
+    warnings: meta.warnings || [],
   };
 }
 

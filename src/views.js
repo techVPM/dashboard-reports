@@ -188,7 +188,7 @@ function splitPanel(L) {
 }
 function actionsPanel(maxN) {
   var D = computeInsights(), acts = D.actions.slice(0, maxN || 5);
-  var li = acts.map(function (a, i) { return '<li><span class="n">' + (i + 1) + '</span><div><div class="t">' + esc(a.title) + ' <span class="pill ' + ({ High: 'bad', Medium: 'warn', Low: 'early' }[a.priority] || 'early') + '">' + esc(a.priority) + '</span></div><div class="d">' + esc(a.body) + '</div></div></li>'; }).join('');
+  var li = acts.map(function (a, i) { return '<li><span class="n">' + (i + 1) + '</span><div><div class="t">' + esc(a.title) + '</div><div class="d">' + esc(a.body) + '</div></div></li>'; }).join('');
   var clock = '';
   if (META.last_change_date) {
     var ld = Date.parse(META.last_change_date + 'T00:00:00Z');
@@ -197,7 +197,7 @@ function actionsPanel(maxN) {
       clock = '<div class="clock"><svg viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="30" fill="none" stroke="var(--line)" stroke-width="7"/><circle cx="36" cy="36" r="30" fill="none" stroke="var(--c3)" stroke-width="7" stroke-linecap="round" stroke-dasharray="' + (cir * day / 14).toFixed(1) + ' ' + cir.toFixed(1) + '" transform="rotate(-90 36 36)"/></svg><div><b>Day ' + day + ' of 14</b><span>One change, then 14 days before the next.</span></div></div>';
     }
   }
-  return panel('What we recommend next', 'The highest-impact steps first. <a href="#insights" class="lnk" data-go="insights">See all insights and actions</a>', '<ol class="steps">' + (li || '<li><div class="d">No actions yet. More data is needed.</div></li>') + '</ol>' + clock);
+  return panel('Our next step', 'What we are focused on now. <a href="#insights" class="lnk" data-go="insights">See all insights</a>', '<ol class="steps">' + (li || '<li><div class="d">No actions yet. More data is needed.</div></li>') + '</ol>' + clock);
 }
 function insightCard(i, withTone) {
   return '<article class="ins ' + (i.tone || 'neutral') + '"><h3>' + esc(i.title) + '</h3><p>' + esc(i.body) + '</p></article>';
@@ -247,7 +247,7 @@ function vOverview() {
   return kpiCards(A, KPS()) + kpiCards(A, KPS2(), null, true) + goalsPanel(A) +
     chartCard('o', 'Spend, results and ' + (horizon() ? horizon() + '-day ' : '') + 'outlook', horizon() ? 'Solid line is what happened. Dashed line is where it is heading at the current pace.' : 'Daily trend for the selected range. Pick 14 days or more to see a projection.', A) +
     panel('Key insights', 'The short version. <a href="#insights" class="lnk" data-go="insights">Read all of it</a>', '<div class="inslist">' + D.insights.slice(0, 3).map(insightCard).join('') + '</div>') +
-    '<div class="two">' + splitPanel(L) + actionsPanel(2) + '</div>';
+    '<div class="two">' + splitPanel(L) + actionsPanel(1) + '</div>';
 }
 function weeklyTable(A, Wk) {
   var sc = sing(LBL.calls), sl = sing(LBL.leads);
@@ -383,8 +383,8 @@ function vInsights() {
   var D = computeInsights(), out = '';
   out += panel('Wins', 'Good news in the selected range', D.wins.length ? '<div class="inslist wins">' + D.wins.map(function (w) { return '<article class="ins good win"><h3>' + esc(w.title) + '</h3><p>' + esc(w.body) + '</p></article>'; }).join('') + '</div>' : '<p class="msg">No standout wins in this range yet. See the recommended actions below.</p>');
   if (D.team.length) out += panel('From your Video Power Marketing team', '', '<div class="inslist">' + D.team.map(function (n) { return insightCard({ tone: 'team', title: n.title, body: n.body }); }).join('') + '</div>');
-  out += panel('Recommended actions', 'The two most important next steps.',
-    (D.actions.length ? '<ol class="steps big">' + D.actions.map(function (a, i) { return '<li><span class="n">' + (i + 1) + '</span><div><div class="t">' + esc(a.title) + ' <span class="pill ' + ({ High: 'bad', Medium: 'warn', Low: 'early' }[a.priority] || 'early') + '">' + esc(a.priority) + '</span></div><div class="d">' + esc(a.body) + '</div></div></li>'; }).join('') + '</ol>' : '<p class="msg">Nothing urgent. The account is on track.</p>'));
+  out += panel('Our next step', 'What we are focused on now.',
+    (D.actions.length ? '<ol class="steps big">' + D.actions.map(function (a, i) { return '<li><span class="n">' + (i + 1) + '</span><div><div class="t">' + esc(a.title) + '</div><div class="d">' + esc(a.body) + '</div></div></li>'; }).join('') + '</ol>' : '<p class="msg">Nothing urgent. The account is on track.</p>'));
   var gp = GROUPS.map(function (g) {
     var rows = D.insights.filter(function (i) { return (i.g || 'perf') === g[0]; });
     return rows.length ? panel(g[1], g[2], '<div class="inslist">' + rows.map(insightCard).join('') + '</div>') : '';

@@ -2,7 +2,7 @@
 <div class="wrap">
   <header class="tbar">
     <div class="brand">VIDEO POWER<span>MARKETING</span></div>
-    <div class="tbtns"><a class="tlink" href="/admin">Edit clients and goals</a><button type="button" class="tlink" id="out" hidden>Sign out</button></div>
+    <div class="tbtns"><a class="tlink" href="/creative">Creative Hub</a><a class="tlink" href="/admin">Edit clients and goals</a><button type="button" class="tlink" id="out" hidden>Sign out</button></div>
   </header>
   <div class="thead">
     <div><h1>All clients</h1><p class="sub" id="tsub">Checked against each client's goals.</p></div>
@@ -113,6 +113,7 @@
         r.actions.map(function (a) { return '<tr><td class="nm"><b>' + esc(a.name) + '</b></td><td class="n">' + int(a.cur) + '</td><td class="n">' + int(a.prev) + '</td><td>' + (a.focus ? '<span class="pill good">Main result</span>' : a.watch ? '<span class="pill warn">Watching</span>' : '<span class="mut">Not counted</span>') + '</td></tr>'; }).join('') + '</tbody></table></div>';
     }
     if (r.missing_conversions && r.missing_conversions.length) out += '<p class="warnline">No activity found for: ' + r.missing_conversions.map(esc).join(', ') + '. Check the spelling against Goals, Conversions in Google Ads, or it may simply have had none in this range.</p>';
+    if (r.warnings && r.warnings.length) out += '<p class="warnline">Some data could not be loaded from Google on the last refresh: ' + r.warnings.map(esc).join('; ') + '</p>';
     if (r.campaigns && r.campaigns.length) {
       out += '<h3>Campaigns</h3><div class="tw"><table class="t"><thead><tr><th><button>Campaign</button></th><th class="n"><button>Spend</button></th><th class="n"><button>' + esc(r.label) + '</button></th><th class="n"><button>Cost each</button></th></tr></thead><tbody>' +
         r.campaigns.map(function (c) { return '<tr><td class="nm"><b>' + esc(c.name) + '</b><br><span class="tag">' + esc(c.type) + '</span></td><td class="n">' + money(c.spend) + '</td><td class="n">' + int(c.res) + '</td><td class="n">' + money2(c.cpa) + '</td></tr>'; }).join('') + '</tbody></table></div>';

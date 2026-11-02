@@ -19,7 +19,7 @@ export default async (req) => {
   for (const days of want.length ? want : PRESETS) {
     const { from, to } = presetRange(days, client.timezone);
     try {
-      const payload = await buildReport({ client, from, to });
+      const payload = await buildReport({ client, from, to, timeoutMs: 30000 });
       await cachePut(cacheKey(client, from, to), { saved_at: Date.now(), payload });
       await cachePut(latestKey(client.token, days), { saved_at: Date.now(), payload });
       console.log('refreshed', client.name, days + 'd', payload.meta.warnings.length ? 'warnings: ' + payload.meta.warnings.join('; ') : 'ok');

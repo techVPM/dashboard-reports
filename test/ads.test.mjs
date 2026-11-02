@@ -170,7 +170,19 @@ test('a query still works when the API version no longer has metrics.video_views
   const rows = await runQuery('6830451613', 'SELECT campaign.id, metrics.clicks, metrics.video_views, metrics.conversions FROM campaign', { env: ENV, fetchFn: f });
   assert.equal(rows.length, 1);
   assert.equal(sent.length, 2);
-  assert.equal(sent[1], 'SELECT campaign.id, metrics.clicks, metrics.conversions FROM campaign');
+  assert.equal(sent[1], 'SELECT campaign.id, metrics.clicks, metrics.video_trueview_views, metrics.conversions FROM campaign');
+  // if neither name for video views is known, the field is dropped
+  resetTokenCache();
+  const sent2 = [];
+  const g = async (url, init) => {
+    if (url.includes('oauth2.googleapis.com')) return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }), { status: 200 });
+    const q = JSON.parse(init.body).query; sent2.push(q);
+    const m = q.match(/metrics\.video_(trueview_)?views/);
+    if (m) return new Response(JSON.stringify({ error: { message: "Unrecognized field in the query: '" + m[0] + "'." } }), { status: 400 });
+    return new Response(JSON.stringify([{ results: [{ campaign: { id: '1' } }] }]), { status: 200 });
+  };
+  assert.equal((await runQuery('6830451613', 'SELECT campaign.id, metrics.video_trueview_views, metrics.clicks FROM campaign', { env: ENV, fetchFn: g })).length, 1);
+  assert.equal(sent2[sent2.length - 1], 'SELECT campaign.id, metrics.clicks FROM campaign');
   // other bad fields still fail loudly
   await assert.rejects(runQuery('1', 'SELECT metrics.nope FROM campaign', { env: ENV, fetchFn: async (u) => u.includes('oauth2') ? new Response(JSON.stringify({ access_token: 't', expires_in: 3600 })) : new Response(JSON.stringify({ error: { message: "Unrecognized field in the query: 'metrics.nope'." } }), { status: 400 }) }));
 });
@@ -280,4 +292,31 @@ test('admin validation catches bad input and fills the link key', async () => {
   assert.ok(validate({ name: 'S', customer_id: '3069247469', token: 'sandler-7469' }, list, null).join(' ').includes('already'));
   assert.deepEqual(validate({ name: 'Sandler', customer_id: '3069247469', token: 'sandler-7469' }, list, 'sandler-7469'), []);
   assert.ok(validate({ name: 'T', customer_id: '1234567890', token: 'team' }, list, null).join(' ').includes('reserved'));
+});
+
+test('videos come from the video report, with Demand Gen video assets as a backup', async () => {
+  resetTokenCache();
+  const base = mockFetch();
+  const f = async (url, init) => {
+    if (!String(url).includes('oauth2')) {
+      const q = JSON.parse(init.body).query;
+      const m = (c, i, k) => ({ costMicros: String(c * 1e6), impressions: String(i), clicks: String(k), conversions: 0, videoTrueviewViews: '10' });
+      if (/FROM video WHERE/.test(q) && !q.includes('conversion_action_name')) return new Response(JSON.stringify([{ results: [{ campaign: { id: '2' }, video: { id: 'AAA', title: 'Hook A' }, metrics: { ...m(10, 100, 5), videoQuartileP25Rate: 0.5, videoQuartileP50Rate: 0.3, videoQuartileP100Rate: 0.1 } }] }]));
+      if (/FROM ad_group_ad_asset_view/.test(q) && !q.includes('conversion_action_name')) return new Response(JSON.stringify([{ results: [
+        { campaign: { id: '2' }, asset: { id: '1', youtubeVideoAsset: { youtubeVideoId: 'AAA', youtubeVideoTitle: 'Hook A' } }, metrics: m(10, 100, 5) },
+        { campaign: { id: '2' }, asset: { id: '2', youtubeVideoAsset: { youtubeVideoId: 'BBB', youtubeVideoTitle: 'Hook B' } }, metrics: m(4, 40, 2) },
+        { campaign: { id: '2' }, asset: { id: '2', youtubeVideoAsset: { youtubeVideoId: 'BBB', youtubeVideoTitle: 'Hook B' } }, metrics: m(6, 60, 3) },
+      ] }]));
+    }
+    return base(url, init);
+  };
+  const r = await buildReport({ client: CLIENT, from: '2026-10-01', to: '2026-10-30', env: ENV, fetchFn: f });
+  const v = r.items.videos;
+  assert.equal(v.length, 2);
+  const a = v.find((x) => x.video_id === 'AAA'), b = v.find((x) => x.video_id === 'BBB');
+  assert.equal(a.spend, 10);              // not double counted from the backup
+  assert.equal(a.p25, 0.5);
+  assert.equal(b.spend, 10);              // backup rows for the same video are merged
+  assert.equal(b.impressions, 100);
+  assert.equal(a.views, 10);
 });

@@ -117,7 +117,9 @@ Add one more setting in Netlify (Site configuration, Environment variables): `AD
 - **`/admin`** (for example `https://vpm-dashboard.netlify.app/admin`): add clients, change budgets, goals, notes and time zones, turn a report off, copy a client's link. Saving takes effect within a minute and refreshes that client's report in the background. No GitHub, no redeploy. The first save copies the list from `clients.json` into Netlify storage, and from then on this page is the source of truth (editing `clients.json` no longer changes anything).
 - **`/team`**: every active client on one page (7, 30 or 90 days, or a custom range; Cards or Table view), sorted with the clients that are off track first. Each card shows spend, results and cost each against the goals, with buttons for the client report, the account in Google Ads, and the goal editor. **Details** shows spend by campaign type, every conversion action (main, watched or not counted) and the campaigns.
 
-Both pages ask for the password once per browser.
+- **`/creative`**: the Creative Hub for the creative team. Every video running for active clients, ranked by CTR, conversion rate, cost per conversion and how many people watch to the end. To give the creative team access without the admin password, add a Netlify setting `CREATIVE_PASSWORD`; it opens only this page.
+
+These pages ask for the password once per browser.
 
 ## Part 4. Add clients
 
@@ -231,6 +233,7 @@ After a deploy, Netlify also builds `dist/ghl-embed.html`. It is the same report
 
 ## Version notes
 
+- **1.7**: `/creative` Creative Hub (every video for active clients with impressions, clicks, CTR, view rate, watched to the end, conversions, conversion rate and cost per conversion, top-3 boards, sorting, search, CSV download); simpler client form in `/admin` with a goal summary, budget splits you add only when needed, and a save prompt before leaving unsaved changes; client reports show one next step instead of a list; Demand Gen videos are also read from video ad assets when Google's video report misses them, video views use the current field name, and the daily refresh waits longer for big accounts.
 - **1.6**: team dashboard shows cards three across on wide screens, a Table view, and 7, 30, 90 day or custom date ranges (custom ranges load live, a few clients at a time); admin page has an Active client switch, with inactive clients in their own list, their report links off and hidden from the team dashboard.
 - **1.5**: equal 14px gaps; Trends and Audiences tabs removed (age, gender and device now sit inside each campaign); at most 2 recommended actions; goals for 7 clients; goal ranges like 200-300, spend goals by campaign type, weekly result goals, watched conversions; `/admin` editor and `/team` dashboard; conversion names match regardless of dash style.
 - **1.4**: real gaps between boxes and less padding inside them; phone menu is now a Menu button; compact controls on phones; campaign Audiences section is short (5 at a time) and sits last; paused campaigns are hidden unless `include_paused` is set; per-client `goals` with a Goals panel on the Overview.

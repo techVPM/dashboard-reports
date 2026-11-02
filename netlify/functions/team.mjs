@@ -2,19 +2,13 @@
 // GET /api/team?token=<key>&from=YYYY-MM-DD&to=YYYY-MM-DD   one client for any range, fetched live if needed
 // GET /api/team?token=<key>&days=7                one client for a preset, fetched live if not saved yet
 import { getClients, cacheGet, cachePut, latestKey } from '../lib/store.mjs';
-import { presetRange, cacheKey, resolveRange } from '../lib/range.mjs';
+import { cacheKey, resolveRange } from '../lib/range.mjs';
 import { buildReport } from '../lib/ads.mjs';
 import { summarize, emptyRow } from '../lib/team.mjs';
 import { demoReport } from '../lib/demo.mjs';
 import { isAdmin, jsonRes } from '../lib/auth.mjs';
 
-const PRE = [7, 30, 90];
-
-async function saved(c, days) {
-  let hit = await cacheGet(latestKey(c.token, days));
-  if (!hit) { const { from, to } = presetRange(days, c.timezone); hit = await cacheGet(cacheKey(c, from, to)); }
-  return hit && hit.payload ? hit : null;
-}
+import { savedReport as saved, PRE } from '../lib/saved.mjs';
 
 export default async (req) => {
   if (!isAdmin(req)) return jsonRes({ error: 'Wrong password.' }, 401);

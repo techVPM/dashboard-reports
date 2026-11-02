@@ -84,10 +84,13 @@ export function resetTokenCache() { tokenCache = { value: null, exp: 0 }; }
 
 // One GAQL query -> flat array of result rows (camelCase JSON as the REST API returns it).
 // Fields that are nice to have. If a newer API version drops or renames one, the query is retried without it.
-const OPTIONAL_FIELDS = ['metrics.video_views'];
-const dropField = (q, f) => q.replace(new RegExp(',\\s*' + f.replace(/\./g, '\\.')), '');
+// Google renamed video views (video_views <-> video_trueview_views) between versions, so either name is tried.
+const ALT_FIELDS = { 'metrics.video_trueview_views': 'metrics.video_views', 'metrics.video_views': 'metrics.video_trueview_views' };
+const OPTIONAL_FIELDS = ['metrics.video_views', 'metrics.video_trueview_views', 'metrics.video_quartile_p25_rate', 'metrics.video_quartile_p50_rate', 'metrics.video_quartile_p100_rate'];
+const dropField = (q, f) => q.replace(new RegExp(',\\s*' + f.replace(/\./g, '\\.') + '(?![\\w.])', 'g'), '');
+const swapField = (q, a, b) => q.replace(new RegExp(a.replace(/\./g, '\\.') + '(?![\\w.])', 'g'), b);
 
-export async function runQuery(customerId, query, { env = process.env, fetchFn = fetch, timeoutMs = 9000, retried = false } = {}) {
+export async function runQuery(customerId, query, { env = process.env, fetchFn = fetch, timeoutMs = 9000, retried = 0, tried = [] } = {}) {
   const c = envConfig(env);
   const token = await getAccessToken(env, fetchFn);
   const url = `https://googleads.googleapis.com/${c.version}/customers/${digits(customerId)}/googleAds:searchStream`;
@@ -113,8 +116,9 @@ export async function runQuery(customerId, query, { env = process.env, fetchFn =
           const x = Array.isArray(e) ? e[0] : e;
           msg += ': ' + (x?.error?.details?.[0]?.errors?.[0]?.message || x?.error?.message || '');
         } catch { /* ignore */ }
-        const bad = res.status === 400 && !retried ? (text.match(/Unrecognized field in the query: '([^']+)'/) || [])[1] : null;
-        if (bad && OPTIONAL_FIELDS.includes(bad)) return runQuery(customerId, dropField(query, bad), { env, fetchFn, timeoutMs, retried: true });
+        const bad = res.status === 400 && retried < 4 ? (text.match(/Unrecognized field in the query: '([^']+)'/) || [])[1] : null;
+        if (bad && ALT_FIELDS[bad] && !tried.includes(ALT_FIELDS[bad])) return runQuery(customerId, swapField(query, bad, ALT_FIELDS[bad]), { env, fetchFn, timeoutMs, retried: retried + 1, tried: tried.concat(bad) });
+        if (bad && OPTIONAL_FIELDS.includes(bad)) return runQuery(customerId, dropField(query, bad), { env, fetchFn, timeoutMs, retried: retried + 1, tried: tried.concat(bad) });
         const hint = explainError(res.status, text);
         if (hint) msg += ' ' + hint;
         const err = new AdsError(msg, res.status, text.slice(0, 500));
@@ -140,7 +144,7 @@ export async function runQuery(customerId, query, { env = process.env, fetchFn =
 const num = (v) => (v == null || v === '' ? 0 : Number(v));
 const r2 = (v) => Math.round(v * 100) / 100;
 const MX = 'metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions';
-const MV = MX + ', metrics.video_views';
+const MV = MX + ', metrics.video_trueview_views';
 
 const CHANNEL_TYPE = { SEARCH: 'search', VIDEO: 'video', DEMAND_GEN: 'video', PERFORMANCE_MAX: 'pmax', SHOPPING: 'shopping', DISPLAY: 'display' };
 
@@ -168,13 +172,27 @@ export const ITEM_SPECS = [
     item: (r) => ({ campaign_id: r.campaign.id, name: adName(r), detail: r.adGroup?.name || '', url: String(r.adGroupAd?.ad?.finalUrls?.[0] || '') }),
   },
   {
-    kind: 'videos', from: 'video', video: true, order: true, limit: 60,
+    kind: 'videos', from: 'video', video: true, order: true, limit: 80, src: 'video',
     fields: ['campaign.id', 'video.id', 'video.title', 'video.duration_millis'],
+    extraMetrics: ['metrics.video_quartile_p25_rate', 'metrics.video_quartile_p50_rate', 'metrics.video_quartile_p100_rate'],
     keyFields: ['campaign.id', 'video.id'],
     key: (r) => r.campaign?.id + '|' + r.video?.id,
     item: (r) => {
       const s = Math.round(num(r.video?.durationMillis) / 1000);
       return { campaign_id: r.campaign.id, name: r.video?.title || 'Video ' + String(r.video?.id || ''), detail: s ? (s >= 60 ? Math.floor(s / 60) + 'm ' + (s % 60) + 's' : s + 's') : '', video_id: r.video?.id };
+    },
+  },
+  {
+    // Backup for videos: Demand Gen and Video campaigns report each YouTube video as an ad asset too.
+    // Only used for videos the video report above did not return.
+    kind: 'videos', from: 'ad_group_ad_asset_view', video: true, order: true, limit: 150, src: 'asset',
+    extraWhere: "asset.type = 'YOUTUBE_VIDEO' AND campaign.advertising_channel_type IN ('DEMAND_GEN', 'VIDEO')",
+    fields: ['campaign.id', 'asset.id', 'asset.youtube_video_asset.youtube_video_id', 'asset.youtube_video_asset.youtube_video_title'],
+    keyFields: ['campaign.id', 'asset.id'],
+    key: (r) => r.campaign?.id + '|' + r.asset?.id,
+    item: (r) => {
+      const y = r.asset?.youtubeVideoAsset || {};
+      return { campaign_id: r.campaign.id, name: y.youtubeVideoTitle || 'Video ' + String(y.youtubeVideoId || r.asset?.id || ''), detail: '', video_id: y.youtubeVideoId || '' };
     },
   },
   {
@@ -251,7 +269,7 @@ export function baseQuery(spec, from, to, statusClause = '') {
   const where = [dateWhere(from, to), 'metrics.impressions > 0'];
   if (statusClause) where.push(statusClause);
   if (spec.extraWhere) where.push(spec.extraWhere);
-  return `SELECT ${spec.fields.join(', ')}, ${spec.video ? MV : MX} FROM ${spec.from} WHERE ${where.join(' AND ')}` +
+  return `SELECT ${spec.fields.join(', ')}, ${spec.video ? MV : MX}${spec.extraMetrics ? ', ' + spec.extraMetrics.join(', ') : ''} FROM ${spec.from} WHERE ${where.join(' AND ')}` +
     (spec.order ? ` ORDER BY metrics.cost_micros DESC LIMIT ${spec.limit}` : '');
 }
 export function splitQuery(spec, from, to, convField, statusClause = '') {
@@ -285,7 +303,7 @@ function addMetrics(o, r) {
   o.spend += num(m.costMicros) / 1e6;
   o.impressions += num(m.impressions);
   o.clicks += num(m.clicks);
-  o.views += num(m.videoViews);
+  o.views += num(m.videoTrueviewViews ?? m.videoViews);
   o.conversions += num(m.conversions);
 }
 function addSplit(o, role, conv, value) {
@@ -308,10 +326,10 @@ async function settle(label, promise, warnings) {
   try { return await promise; } catch (e) { warnings.push(label + ': ' + e.message); return null; }
 }
 
-export async function buildReport({ client: rawClient, from, to, env = process.env, fetchFn = fetch, now = new Date() }) {
+export async function buildReport({ client: rawClient, from, to, env = process.env, fetchFn = fetch, now = new Date(), timeoutMs = 9000 }) {
   const { client, goals } = applyGoals(rawClient);
   const customerId = digits(client.customer_id);
-  const opts = { env, fetchFn };
+  const opts = { env, fetchFn, timeoutMs };
   const classifier = makeClassifier(client.outcomes);
   const convField = client.conversion_field === 'all_conversions' ? 'all_conversions' : 'conversions';
   const len = daysBetween(from, to) + 1;
@@ -401,8 +419,13 @@ export async function buildReport({ client: rawClient, from, to, env = process.e
     const map = new Map();
     for (const r of baseRows) {
       const k = spec.key(r);
-      if (!map.has(k)) map.set(k, { ...spec.item(r), ...emptyAgg() });
-      addMetrics(map.get(k), r);
+      if (!map.has(k)) map.set(k, { ...spec.item(r), ...emptyAgg(), ...(spec.extraMetrics ? { _q: [0, 0, 0, 0] } : {}) });
+      const it = map.get(k);
+      addMetrics(it, r);
+      if (it._q) {
+        const m = r.metrics || {}, w = num(m.impressions);
+        if (m.videoQuartileP25Rate != null) { it._q[0] += num(m.videoQuartileP25Rate) * w; it._q[1] += num(m.videoQuartileP50Rate) * w; it._q[2] += num(m.videoQuartileP100Rate) * w; it._q[3] += w; }
+      }
     }
     if (splitRows) {
       for (const r of splitRows) {
@@ -412,7 +435,13 @@ export async function buildReport({ client: rawClient, from, to, env = process.e
         addSplit(it, classifier.roles(r.segments.conversionActionName), num(m[convField]), num(m[convField + 'Value']));
       }
     }
-    const list = [...map.values()].map((it) => finish(it, classifier, client.deal_value));
+    const list = [...map.values()].map((it) => {
+      const q = it._q; delete it._q;
+      const f = finish(it, classifier, client.deal_value);
+      if (q && q[3]) { f.p25 = r2(q[0] / q[3]); f.p50 = r2(q[1] / q[3]); f.p100 = r2(q[2] / q[3]); }
+      if (spec.src) f._src = spec.src;
+      return f;
+    });
     items[spec.kind] = (items[spec.kind] || []).concat(list);
   }
   if (items.hours) {
@@ -424,6 +453,19 @@ export async function buildReport({ client: rawClient, from, to, env = process.e
       else for (const k of ['spend', 'impressions', 'clicks', 'views', 'conversions', 'leads', 'calls', 'deals', 'revenue']) cur[k] = r2(cur[k] + h[k]);
     }
     items.hours = [...byHour.values()].sort((a, b) => Number(a.name) - Number(b.name));
+  }
+  if (items.videos) {
+    // Keep the video report's rows; add backup rows only for videos it did not return. Same video in the same campaign is merged.
+    const seen = new Set(items.videos.filter((v) => v._src === 'video').map((v) => v.campaign_id + '|' + v.video_id));
+    const merged = new Map();
+    for (const v of items.videos) {
+      if (v._src === 'asset' && seen.has(v.campaign_id + '|' + v.video_id)) continue;
+      const k = v.campaign_id + '|' + (v.video_id || v.name) + '|' + v._src;
+      const cur = merged.get(k);
+      if (!cur) { merged.set(k, { ...v }); continue; }
+      for (const f of ['spend', 'impressions', 'clicks', 'views', 'conversions', 'leads', 'calls', 'deals', 'revenue']) cur[f] = r2(cur[f] + v[f]);
+    }
+    items.videos = [...merged.values()].map(({ _src, ...v }) => v);
   }
   for (const k of Object.keys(items)) items[k].sort((a, b) => b.spend - a.spend);
 

@@ -205,7 +205,7 @@ function computeInsights() {
   var po = { High: 0, Medium: 1, Low: 2 };
   acts.forEach(function (a, i) { a._i = i; });
   acts.sort(function (a, b) { return (b.team ? 1 : 0) - (a.team ? 1 : 0) || (po[a.priority] || 1) - (po[b.priority] || 1) || a._i - b._i; });
-  acts = acts.slice(0, 2);
+  acts = acts.slice(0, 1);   // clients see one clear next step; the rest is for the team
 
   /* ----- notes ----- */
   notes.push({ title: 'How to read this report', body: 'Conversion rate is conversions divided by clicks. Cost per conversion is spend divided by conversions. "' + rlab() + '" are the actions counted as results for this account' + (mapped ? ', which can be fewer than every conversion Google counts.' : '.') + ' Changes are measured against the previous ' + N + ' days (' + dlab(dms(META.previous ? META.previous.from : iso(START - N * DAY))) + ' to ' + dlab(dms(META.previous ? META.previous.to : iso(START - DAY))) + ').' });
