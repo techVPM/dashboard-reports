@@ -121,7 +121,7 @@ function stat(o, thr) {
   return c <= t ? 'scale' : c <= t * 1.3 ? 'hold' : 'fix';
 }
 var CL = { scale: 'good', hold: 'warn', fix: 'bad', early: 'early', nodata: 'early' };
-var LBLS = { camp: { scale: 'Scaling', hold: 'Holding', fix: 'Fix or pause', early: 'Too early', nodata: 'No outcome data' }, item: { scale: 'Scale', hold: 'Keep', fix: 'Cut', early: 'Too early', nodata: 'No outcome data' } };
+var LBLS = { camp: { scale: 'Performing well', hold: 'Steady', fix: 'Needs work', early: 'Too early', nodata: 'No results data' }, item: { scale: 'Strong', hold: 'Steady', fix: 'Needs work', early: 'Too early', nodata: 'No results data' } };
 function thrCamp() { return Math.max(30, N * 5); }
 function thrItem() { return Math.max(15, N * 1.7); }
 function pill(o, kind, thr) { var s = stat(o, thr); return '<span class="pill ' + CL[s] + '">' + LBLS[kind][s] + '</span>'; }

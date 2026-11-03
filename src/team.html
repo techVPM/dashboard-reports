@@ -2,7 +2,7 @@
 <div class="wrap">
   <header class="tbar">
     <div class="brand">VIDEO POWER<span>MARKETING</span></div>
-    <div class="tbtns"><a class="tlink" href="/creative">Creative Hub</a><a class="tlink" href="/admin">Edit clients and goals</a><button type="button" class="tlink" id="out" hidden>Sign out</button></div>
+    <div class="tbtns"><nav class="itabs" aria-label="Team pages"><a class="itab on" href="/team" aria-current="page"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="11" y="3" width="6" height="6" rx="1"/><rect x="3" y="11" width="6" height="6" rx="1"/><rect x="11" y="11" width="6" height="6" rx="1"/></svg><span class="lt">All clients</span><span class="st">Clients</span></a><a class="itab" href="/creative"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2"/><path d="M8.5 7.8v4.4l4-2.2z"/></svg><span class="lt">Creative Hub</span><span class="st">Creative</span></a><a class="itab" href="/admin"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="2.5"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/></svg><span class="lt">Clients and goals</span><span class="st">Goals</span></a></nav><button type="button" class="tlink" id="out" hidden>Sign out</button></div>
   </header>
   <div class="thead">
     <div><h1>All clients</h1><p class="sub" id="tsub">Checked against each client's goals.</p></div>
@@ -28,6 +28,9 @@
   <section id="list" class="clist"><div class="panel"><p class="msg">Loading</p></div></section>
   <p class="sub" id="foot"></p>
 </div>
+<div class="modal" id="dmodal" hidden role="dialog" aria-modal="true" aria-labelledby="dtitle">
+  <div class="mbox wide2"><div class="mhead"><div><h2 id="dtitle"></h2><p id="dmeta" class="sub"></p></div><button type="button" class="mclose" data-close="1" aria-label="Close">&times;</button></div><div id="dbody"></div></div>
+</div>
 </div>
 <script>
 (function () {
@@ -43,8 +46,10 @@
   function fmt(v, u) { return u === 'money' ? money(v) : u === 'money2' ? money2(v) : u === 'x' ? (v == null ? 'n/a' : v.toFixed(2) + 'x') : int(v); }
   function chg(a, b, inv) { if (!b || a == null) return ''; var p = Math.round((a - b) / b * 100), good = inv ? p < 0 : p > 0; return '<em class="' + (p === 0 ? '' : good ? 'up' : 'dn') + '">' + (p > 0 ? '+' : '') + p + '%</em>'; }
   function dlab(iso) { return iso ? new Date(iso + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : ''; }
-  var WORD = { good: 'On track', warn: 'Watch', bad: 'Off track', none: 'No goals or data' };
-  var ORDER = { bad: 0, warn: 1, good: 2, none: 3 };
+  var WORD = { good: 'On track', warn: 'Watch', bad: 'Off track', none: 'Too early', nogoals: 'Set up goals', nodata: 'No data yet' };
+  var ORDER = { bad: 0, warn: 1, good: 2, none: 3, nogoals: 4, nodata: 5 };
+  function pcls(s) { return s === 'good' || s === 'warn' || s === 'bad' ? s : s === 'nogoals' ? 'setup' : 'early'; }
+  function flagsHtml(r) { return r.flags && r.flags.length ? '<div class="flags">' + r.flags.map(function (f) { return '<a class="flag" href="/admin#' + esc(r.token) + '">' + esc(f) + '</a>'; }).join('') + '</div>' : ''; }
 
   function api(path) {
     return fetch(path, { headers: { 'x-admin-key': pw } }).then(function (r) { return r.json().then(function (j) { if (r.status === 401) throw { auth: 1 }; if (!r.ok) throw new Error(j.error || 'Failed'); return j; }); });
@@ -126,13 +131,17 @@
   function upd(r) { return r.updated ? new Date(r.updated).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''; }
   function card(r) {
     if (r.missing) {
-      return '<article class="panel crow miss"><div class="ctop"><div><h2>' + esc(r.name) + '</h2><p class="sub">' + esc(r.customer_id) + ' · ' + esc(r.why) + '</p></div><span class="pill early">' + (r.loading ? 'Loading' : 'No data yet') + '</span></div><div class="cbtns">' + (r.loading ? '' : '<button type="button" class="mbtn" data-load="' + esc(r.token) + '">Load now</button>') + links(r) + '</div></article>';
+      return '<article class="panel crow miss"><div class="ctop"><div><h2>' + esc(r.name) + '</h2><p class="sub">' + esc(r.customer_id) + ' · ' + esc(r.why) + '</p></div><span class="pill early">' + (r.loading ? 'Loading' : 'No data yet') + '</span></div>' + flagsHtml(r) + '<p class="msg small grow1">' + (r.loading ? 'Gathering this client\'s numbers from Google.' : 'Press Load now, or it fills in after the next 10 am refresh.') + '</p><div class="cbtns">' + (r.loading ? '' : '<button type="button" class="mbtn" data-load="' + esc(r.token) + '">Load now</button>') + links(r) + '</div></article>';
     }
-    var head = '<div class="ctop"><div><h2>' + esc(r.name) + '</h2><p class="sub">' + esc(r.customer_id) + (upd(r) ? ' · updated ' + esc(upd(r)) : '') + (r.mixed ? ' · <b class="scopetag">' + (r.scope === 'vpm' ? 'VPM campaigns only' : r.scope === 'other' ? 'Not VPM campaigns' : 'All campaigns') + '</b>' : '') + '</p></div><span class="pill big ' + (r.overall === 'none' ? 'early' : r.overall) + '">' + WORD[r.overall] + '</span></div>';
-    var nums = '<div class="nums"><div><span>Spend</span><b>' + money(r.spend) + '</b>' + chg(r.spend, r.prev.spend) + '</div><div><span>' + esc(r.label) + '</span><b>' + int(r.results) + '</b>' + chg(r.results, r.prev.results) + '</div><div><span>Cost each</span><b>' + money2(r.cpa) + '</b>' + (r.cpa && r.prev.cpa ? chg(r.cpa, r.prev.cpa, true) : '') + '</div></div>';
-    var checks = r.checks.length ? '<div class="checks">' + r.checks.map(check).join('') + '</div>' : '<p class="msg small">No goals yet. <a href="/admin#' + esc(r.token) + '">Add goals</a> to see how this client lines up.</p>';
-    var open = !!OPEN[r.token];
-    return '<article class="panel crow' + (open ? ' open' : '') + '">' + head + nums + checks + '<div class="cbtns">' + links(r) + '<button type="button" class="obtn" data-open="' + esc(r.token) + '" aria-expanded="' + open + '">' + (open ? 'Hide details' : 'Details') + '</button></div>' + (open ? details(r) : '') + '</article>';
+    var head = '<div class="ctop"><div><h2>' + esc(r.name) + '</h2><p class="sub">' + esc(r.customer_id) + (upd(r) ? ' · updated ' + esc(upd(r)) : '') + (r.mixed ? ' · <b class="scopetag">' + (r.scope === 'vpm' ? 'VPM campaigns only' : r.scope === 'other' ? 'Not VPM campaigns' : 'All campaigns') + '</b>' : '') + '</p></div><span class="pill big ' + pcls(r.overall) + '">' + WORD[r.overall] + '</span></div>';
+    // Cost each carries its own goal, so it is not repeated in the goal checks below.
+    var cc = r.checks.filter(function (c) { return c.key === 'cpa'; })[0];
+    var costTile = '<div class="' + (cc && cc.status !== 'none' ? 'st-' + cc.status : '') + '"><span>Cost each</span><b>' + money2(r.cpa) + '</b>' + (cc ? '<em class="gl">goal ' + goalTxt(cc) + '</em>' : (r.cpa && r.prev.cpa ? chg(r.cpa, r.prev.cpa, true) : '')) + '</div>';
+    var nums = '<div class="nums"><div><span>Spend</span><b>' + money(r.spend) + '</b>' + chg(r.spend, r.prev.spend) + '</div><div><span>' + esc(r.label) + '</span><b>' + int(r.results) + '</b>' + chg(r.results, r.prev.results) + '</div>' + costTile + '</div>';
+    var rest = r.checks.filter(function (c) { return c.key !== 'cpa'; });
+    var reason = r.reason ? '<p class="reason ' + r.overall + '">' + esc(r.reason) + '</p>' : '';
+    var checks = rest.length ? '<div class="checks">' + rest.map(check).join('') + '</div>' : (r.checks.length ? '' : '<p class="msg small">No goals yet. <a href="/admin#' + esc(r.token) + '">Add goals</a> to see how this client lines up.</p>');
+    return '<article class="panel crow">' + head + reason + nums + checks + flagsHtml(r) + '<div class="cbtns">' + links(r) + '<button type="button" class="obtn" data-open="' + esc(r.token) + '">Details</button></div></article>';
   }
   function cell(r, keys) {
     var cs = r.checks.filter(function (c) { return keys.some(function (k) { return c.key === k || c.key.indexOf(k + '-') === 0; }); });
@@ -142,34 +151,46 @@
   function table(rows) {
     var h = '<div class="panel tpanel"><div class="tw"><table class="t tt"><thead><tr>' + ['Client', 'Status', 'Spend', 'Results', 'Cost each', 'Cost goal', 'Spend goal (per 30 days)', 'Volume goal', ''].map(function (x, i) { return '<th class="' + (i >= 2 && i <= 4 ? 'n' : '') + '"><button>' + x + '</button></th>'; }).join('') + '</tr></thead><tbody>';
     h += rows.map(function (r) {
-      if (r.missing) return '<tr><td class="nm"><a href="' + esc(r.report_url) + '" target="_blank" rel="noopener"><b>' + esc(r.name) + '</b></a></td><td><span class="pill early">' + (r.loading ? 'Loading' : 'No data yet') + '</span></td><td colspan="6" class="mut">' + esc(r.why) + '</td><td class="tl"><div>' + (r.loading ? '' : '<button type="button" class="obtn sm" data-load="' + esc(r.token) + '">Load</button>') + '</div></td></tr>';
+      if (r.missing) return '<tr><td class="nm"><a href="' + esc(r.report_url) + '" target="_blank" rel="noopener"><b>' + esc(r.name) + '</b></a></td><td><span class="pill early">' + (r.loading ? 'Loading' : 'No data yet') + '</span>' + (r.flags && r.flags.length ? '<br><small class="flagtxt">' + esc(r.flags.join(', ')) + '</small>' : '') + '</td><td colspan="6" class="mut">' + esc(r.why) + '</td><td class="tl"><div>' + (r.loading ? '' : '<button type="button" class="obtn sm" data-load="' + esc(r.token) + '">Load</button>') + '</div></td></tr>';
       return '<tr><td class="nm"><a href="' + esc(r.report_url) + '" target="_blank" rel="noopener"><b>' + esc(r.name) + '</b></a><br><span class="tag">' + esc(r.label) + (r.mixed ? ' · ' + (r.scope === 'vpm' ? 'VPM only' : r.scope === 'other' ? 'Not VPM' : 'All campaigns') : '') + '</span>' + (upd(r) ? '<br><small class="mut">updated ' + esc(upd(r)) + '</small>' : '') + '</td>' +
-        '<td><span class="pill ' + (r.overall === 'none' ? 'early' : r.overall) + '">' + WORD[r.overall] + '</span></td>' +
+        '<td><span class="pill ' + pcls(r.overall) + '">' + WORD[r.overall] + '</span>' + (r.reason ? '<br><small class="mut">' + esc(r.reason) + '</small>' : '') + (r.flags && r.flags.length ? '<br><small class="flagtxt">' + esc(r.flags.join(', ')) + '</small>' : '') + '</td>' +
         '<td class="n">' + money(r.spend) + '<br>' + chg(r.spend, r.prev.spend) + '</td>' +
         '<td class="n">' + int(r.results) + '<br>' + chg(r.results, r.prev.results) + '</td>' +
         '<td class="n">' + money2(r.cpa) + '<br>' + (r.cpa && r.prev.cpa ? chg(r.cpa, r.prev.cpa, true) : '') + '</td>' +
         '<td>' + cell(r, ['cpa', 'roas']) + '</td><td>' + cell(r, ['spend']) + '</td><td>' + cell(r, ['vol', 'volw']) + '</td>' +
-        '<td class="tl"><div><a class="obtn sm" href="' + esc(r.ads_url) + '" target="_blank" rel="noopener">Ads</a><a class="obtn sm" href="/admin#' + esc(r.token) + '">Goals</a></div></td></tr>';
+        '<td class="tl"><div><button type="button" class="obtn sm" data-open="' + esc(r.token) + '">Details</button><a class="obtn sm" href="' + esc(r.ads_url) + '" target="_blank" rel="noopener">Ads</a><a class="obtn sm" href="/admin#' + esc(r.token) + '">Goals</a></div></td></tr>';
     }).join('');
     return h + '</tbody></table></div></div>';
   }
+  // Details open in a popup so every card in the grid stays the same size.
+  function openDetails(tok) {
+    var r = ROWS.filter(function (x) { return x.token === tok; })[0]; if (!r || r.missing) return;
+    $('dtitle').textContent = r.name;
+    $('dmeta').textContent = r.customer_id + (r.range ? ' · ' + dlab(r.range.from) + ' to ' + dlab(r.range.to) : '');
+    $('dbody').innerHTML = (r.reason ? '<p class="reason ' + r.overall + '">' + esc(r.reason) + '</p>' : '') + (r.checks.length ? '<div class="checks">' + r.checks.map(check).join('') + '</div>' : '') + flagsHtml(r) + details(r) + '<div class="cbtns">' + links(r) + '</div>';
+    $('dmodal').hidden = false;
+  }
+  function closeDetails() { $('dmodal').hidden = true; }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('dmodal').hidden) closeDetails(); });
   function draw() {
     var rows = ROWS.slice().sort(function (a, b) { return ORDER[a.overall] - ORDER[b.overall] || (b.spend || 0) - (a.spend || 0); });
-    var n = { good: 0, warn: 0, bad: 0, none: 0 }, spend = 0, rng = null;
+    var n = { good: 0, warn: 0, bad: 0, none: 0, nogoals: 0, nodata: 0 }, spend = 0, rng = null;
     rows.forEach(function (r) { n[r.overall]++; spend += r.spend || 0; if (!rng && r.range) rng = r.range; });
     $('tsub').textContent = (rng ? dlab(rng.from) + ' to ' + dlab(rng.to) + '. ' : '') + 'Checked against each client\'s goals. Monthly goals are compared with the pace per 30 days.';
     $('sum').innerHTML = '<div class="kpi"><div class="l">Total spend</div><div class="v">' + money(spend) + '</div></div>' +
-      ['bad', 'warn', 'good', 'none'].map(function (k) { return '<button type="button" class="kpi sk ' + k + (FILT === k ? ' on' : '') + '" data-f="' + k + '" aria-pressed="' + (FILT === k) + '"><div class="l">' + WORD[k] + '</div><div class="v">' + n[k] + '</div></button>'; }).join('');
-    var show = rows.filter(function (r) { return FILT === 'all' || r.overall === FILT; });
+      ['bad', 'warn', 'good', 'nogoals', 'nodata'].map(function (k) { return '<button type="button" class="kpi sk ' + k + (FILT === k ? ' on' : '') + '" data-f="' + k + '" aria-pressed="' + (FILT === k) + '"><div class="l">' + WORD[k] + '</div><div class="v">' + n[k] + '</div></button>'; }).join('');
+    var show = rows.filter(function (r) { return FILT === 'all' || r.overall === FILT || (FILT === 'nogoals' && r.overall === 'none'); });
     var L = $('list'); L.className = 'clist ' + VIEW;
     L.innerHTML = !show.length ? '<div class="panel"><p class="msg">No clients in this group. Click the box again to show everyone.</p></div>' : VIEW === 'table' ? table(show) : show.map(card).join('');
     $('foot').textContent = INACTIVE ? INACTIVE + ' inactive client' + (INACTIVE === 1 ? ' is' : 's are') + ' hidden. Manage them on the Edit clients and goals page.' : '';
   }
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-f],[data-open],[data-load],[data-r],[data-v],[data-s]'); if (!t) return;
+    if (e.target.id === 'dmodal') return closeDetails();
+    var t = e.target.closest('[data-f],[data-open],[data-load],[data-r],[data-v],[data-s],[data-close]'); if (!t) return;
     if (t.dataset.s) { SCOPE = t.dataset.s; return load(); }
     if (t.dataset.f) { FILT = FILT === t.dataset.f ? 'all' : t.dataset.f; return draw(); }
-    if (t.dataset.open) { OPEN[t.dataset.open] = !OPEN[t.dataset.open]; return draw(); }
+    if (t.dataset.open) return openDetails(t.dataset.open);
+    if (t.dataset.close) return closeDetails();
     if (t.dataset.v) { VIEW = t.dataset.v; try { localStorage.setItem(VKEY, VIEW); } catch (er) { /* ignore */ } controls(); return draw(); }
     if (t.dataset.r) {
       RANGE.mode = t.dataset.r;

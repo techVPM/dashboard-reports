@@ -14,7 +14,7 @@ function buildMET() {
   };
 }
 function availMets(A) { return MORDER.filter(function (k) { return MET[k].need.every(function (n) { return A.d[n]; }) && !(k === 'spend' && A.d.rev); }); }
-function horizon() { return N >= 14 ? Math.min(30, N) : 0; }
+function horizon() { return 0; }   // projections turned off (v2.0)
 function forecast(d, s) {
   var out = {}, e = 0.8, H = horizon();
   ['spend', 'leads', 'calls', 'rev'].forEach(function (k) {

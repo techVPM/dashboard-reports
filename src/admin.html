@@ -2,7 +2,7 @@
 <div class="wrap">
   <header class="tbar">
     <div class="brand">VIDEO POWER<span>MARKETING</span></div>
-    <div class="tbtns"><a class="tlink" href="/team">All clients</a><a class="tlink" href="/creative">Creative Hub</a><button type="button" class="tlink" id="out" hidden>Sign out</button></div>
+    <div class="tbtns"><nav class="itabs" aria-label="Team pages"><a class="itab" href="/team"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="11" y="3" width="6" height="6" rx="1"/><rect x="3" y="11" width="6" height="6" rx="1"/><rect x="11" y="11" width="6" height="6" rx="1"/></svg><span class="lt">All clients</span><span class="st">Clients</span></a><a class="itab" href="/creative"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2"/><path d="M8.5 7.8v4.4l4-2.2z"/></svg><span class="lt">Creative Hub</span><span class="st">Creative</span></a><a class="itab on" href="/admin" aria-current="page"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="2.5"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/></svg><span class="lt">Clients and goals</span><span class="st">Goals</span></a></nav><button type="button" class="tlink" id="out" hidden>Sign out</button></div>
   </header>
   <div class="thead"><div><h1>Clients and goals</h1><p class="sub">Add a client or change budgets, goals and notes. Changes show on the client's report within a few minutes.</p></div></div>
   <form class="panel gate" id="gate" hidden>
@@ -107,13 +107,14 @@
     var adv = {}; Object.keys(CUR).forEach(function (k) { if (FORM_KEYS.indexOf(k) < 0) adv[k] = CUR[k]; });
     var link = ORIG ? SITE + '/' + ORIG : '', sm = summary(CUR);
     var volN = g.weekly_conversions || g.monthly_conversions || '', volP = g.weekly_conversions ? 'week' : 'month';
-    var moreOpen = !!((g.secondary_conversions || []).length || g.roas || g.note);
+    var moreOpen = !!(g.roas || g.note);
 
     $('form').innerHTML =
       '<div class="fhead"><div><h2>' + (ORIG ? esc(CUR.name) : 'New client') + '</h2>' + (sm.length ? '<p class="glance">' + sm.map(esc).join(' · ') + '</p>' : '') + '</div>' +
         '<div class="fhbtns">' + (link && !CUR.disabled ? '<a class="obtn" href="' + esc(link) + '" target="_blank" rel="noopener">Open report</a>' : '') + '<label class="activetog"><input type="checkbox" id="f_active"' + (CUR.disabled ? '' : ' checked') + '><span>Active client</span></label></div></div>' +
       (link ? '<p class="linkline">Client link: <b>' + esc(link) + '</b> <button type="button" class="tlink" data-copy="' + esc(link) + '">Copy</button>' + (CUR.disabled ? ' <span class="pill early">Turned off while inactive</span>' : '') + '</p>' : '') +
 
+      (ORIG ? '' : '<div class="tpls"><b>Start from a template</b><div class="tplbtns">' + TEMPLATES.map(function (t, i) { return '<button type="button" class="tpl" data-tpl="' + i + '"><b>' + t.name + '</b><small>' + t.sub + '</small></button>'; }).join('') + '</div></div>') +
       section('Client', '', '<div class="fgrid g3">' +
         f('Client name', 'f_name', CUR.name) +
         f('Google Ads ID', 'f_cid', CUR.customer_id, '', 'text', '123-456-7890') +
@@ -125,15 +126,18 @@
         f('Target cost per result', 'g_cpa', g.cost_per_conversion, 'A number like 250, or a range like 200-300') +
         f('What to call a result', 'g_lbl', g.result_label, 'For example Leads, Booked calls, Store visits') +
         '<label class="fld"><span>Results goal</span><span class="pair"><input id="g_vol" inputmode="numeric" value="' + esc(volN) + '" aria-label="Number of results"><select id="g_volp" aria-label="Per"><option value="week"' + (volP === 'week' ? ' selected' : '') + '>a week</option><option value="month"' + (volP === 'month' ? ' selected' : '') + '>a month</option></select></span><small>Optional</small></label>' +
-        ta('Main conversions, one per line', 'g_focus', (g.focus_conversions || []).join('\n'), 'Exact names from Goals, Conversions in Google Ads. These are counted as results.', 2) +
+        '<div class="fld wide"><span>Conversions</span><div class="cpick" id="cpick"><p class="sub">Loading the conversion actions from this Google Ads account.</p></div>' +
+          '<details class="typed" id="typed"><summary>Type names instead</summary><div class="fgrid">' +
+            ta('Main conversions, one per line', 'g_focus', (g.focus_conversions || []).join('\n'), 'Counted as results.', 2) +
+            ta('Other conversions to watch, one per line', 'g_sec', (g.secondary_conversions || []).join('\n'), 'Shown on the team dashboard, not counted as results.', 2) +
+          '</div></details></div>' +
       '</div>') +
 
       section('Budget', 'Monthly spend. Add a split if budgets are set per campaign type.', '<div class="fgrid g3">' +
         f('Whole account, per month', 'g_ms', g.monthly_spend, 'Optional') +
       '</div><div class="splits" id="splits">' + Object.keys(sbt).map(function (k) { return splitRow(k, sbt[k]); }).join('') + '</div><button type="button" class="tlink addsplit" data-addsplit="1">+ Add a split by campaign type</button>') +
 
-      section('More goal options', 'Conversions to watch, return on ad spend, a goal note for the client', '<div class="fgrid">' +
-        ta('Other conversions to watch, one per line', 'g_sec', (g.secondary_conversions || []).join('\n'), 'Shown on the team dashboard, not counted as results.', 2) +
+      section('More goal options', 'Return on ad spend and a goal note for the client', '<div class="fgrid">' +
         f('Target return on ad spend', 'g_roas', g.roas, 'For example 4 means $4 back for every $1. Needs revenue tracking.') +
         ta('Goal note shown to the client', 'g_note', g.note, 'One sentence, for example: Goal is under $250 per booked demo.', 2) +
       '</div>', moreOpen, true) +
@@ -153,10 +157,53 @@
 
       '<div class="savebar"><span class="dirty" id="dirty" hidden>Unsaved changes</span><p class="err" id="ferr" hidden></p><p class="ok" id="fok" hidden></p><span class="sp"></span>' +
         (ORIG ? '<button type="button" class="obtn danger" data-del="1">Delete</button>' : '') + '<button type="submit" class="mbtn">' + (ORIG ? 'Save changes' : 'Add client') + '</button></div>';
+    loadConversions();
   }
+  /* ---------- conversion picker ---------- */
+  function norm(n) { return String(n || '').toLowerCase().replace(/[\u2010-\u2015\u2212]/g, '-').replace(/\s+/g, ' ').trim(); }
+  var CONV = { cid: '', list: null, err: '' };
+  function pickRows() {
+    var main = lines('g_focus'), watch = lines('g_sec'), mainN = main.map(norm), watchN = watch.map(norm);
+    var known = (CONV.list || []).map(function (c) { return norm(c.name); });
+    var extra = main.concat(watch).filter(function (n) { return known.indexOf(norm(n)) < 0; });
+    var rows = (CONV.list || []).map(function (c) {
+      var k = norm(c.name), st = mainN.indexOf(k) > -1 ? 'main' : watchN.indexOf(k) > -1 ? 'watch' : '';
+      return '<div class="crw' + (st ? ' ' + st : '') + '"><div class="cn"><b>' + esc(c.name) + '</b><small>' + (c.count30 ? c.count30.toLocaleString('en-US') + ' in the last 30 days' : 'None in the last 30 days') + (c.category ? ' · ' + esc(c.category) : '') + (c.primary ? ' · primary in Google' : '') + '</small></div>' +
+        '<div class="seg cseg"><button type="button" data-cv="main" data-cn="' + esc(c.name) + '" class="' + (st === 'main' ? 'on' : '') + '">Main result</button><button type="button" data-cv="watch" data-cn="' + esc(c.name) + '" class="' + (st === 'watch' ? 'on' : '') + '">Watch</button><button type="button" data-cv="" data-cn="' + esc(c.name) + '" class="' + (!st ? 'on' : '') + '">Ignore</button></div></div>';
+    }).join('');
+    var miss = extra.length ? '<p class="warnline">Not found in this account: ' + extra.map(esc).join(', ') + '. Check the spelling under "Type names instead".</p>' : '';
+    return rows + miss;
+  }
+  function drawPicker() {
+    var el = $('cpick'); if (!el) return;
+    if (CONV.err) { el.innerHTML = '<p class="sub">' + esc(CONV.err) + ' You can still type the names below.</p>'; $('typed').open = true; return; }
+    if (!CONV.list) { el.innerHTML = '<p class="sub">Add the Google Ads ID above to see this account\'s conversion actions.</p>'; return; }
+    el.innerHTML = '<p class="sub">Pick which conversions count as results for this client. "Watch" shows them on the team dashboard without counting them.</p><div class="crows">' + pickRows() + '</div>';
+  }
+  function loadConversions() {
+    var id = (val('f_cid') || '').replace(/\D/g, '');
+    if (id.length !== 10) { CONV = { cid: '', list: null, err: '' }; return drawPicker(); }
+    if (CONV.cid === id && (CONV.list || CONV.err)) return drawPicker();
+    CONV = { cid: id, list: null, err: '' };
+    $('cpick').innerHTML = '<p class="sub">Loading the conversion actions from this Google Ads account.</p>';
+    api('/api/admin?conversions=' + id).then(function (j) { if (CONV.cid !== id) return; CONV.list = j.conversions || []; drawPicker(); })
+      .catch(function (e) { if (CONV.cid !== id) return; CONV.err = e.message || 'Could not load conversions.'; drawPicker(); });
+  }
+  function setConv(name, to) {
+    var k = norm(name);
+    var main = lines('g_focus').filter(function (n) { return norm(n) !== k; }), watch = lines('g_sec').filter(function (n) { return norm(n) !== k; });
+    if (to === 'main') main.push(name); else if (to === 'watch') watch.push(name);
+    $('g_focus').value = main.join('\n'); $('g_sec').value = watch.join('\n');
+    setDirty(true); drawPicker();
+  }
+  var TEMPLATES = [
+    { name: 'YouTube only', sub: 'We run their YouTube and Demand Gen. Shows VPM campaigns only.', apply: function () { $('f_scope').value = 'vpm'; if (!val('g_lbl')) $('g_lbl').value = 'Leads'; if (!document.querySelector('#splits .srow')) $('splits').insertAdjacentHTML('beforeend', splitRow('video', '')); return document.querySelector('#splits .s_amt'); } },
+    { name: 'Full account', sub: 'We manage every campaign. One monthly budget.', apply: function () { $('f_scope').value = 'all'; if (!val('g_lbl')) $('g_lbl').value = 'Leads'; return $('g_ms'); } },
+    { name: 'Lead gen', sub: 'Judged on cost per lead and leads per month.', apply: function () { $('f_scope').value = 'all'; $('g_lbl').value = 'Leads'; $('g_volp').value = 'month'; return $('g_cpa'); } }
+  ];
   function setDirty(v) { DIRTY = v; var d = $('dirty'); if (d) d.hidden = !v; if (v) { var ok = $('fok'); if (ok) ok.hidden = true; } }
   $('form').addEventListener('input', function () { setDirty(true); });
-  $('form').addEventListener('change', function () { setDirty(true); });
+  $('form').addEventListener('change', function (e) { setDirty(true); if (e.target.id === 'f_cid') loadConversions(); if (e.target.id === 'g_focus' || e.target.id === 'g_sec') drawPicker(); });
 
   function val(id) { var el = $(id); return el ? el.value.trim() : ''; }
   function numv(id) { var v = val(id).replace(/[$,]/g, ''); return v === '' ? undefined : Number(v); }
@@ -214,8 +261,16 @@
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('ask').hidden) answer('stay'); });
 
   document.addEventListener('click', function (e) {
-    var a = e.target.closest('a.tlink'); if (a && DIRTY && a.getAttribute('href')) { e.preventDefault(); return guard(function () { DIRTY = false; location.href = a.getAttribute('href'); }); }
-    var t = e.target.closest('[data-pick],[data-new],[data-del],[data-copy],[data-addsplit],[data-rmsplit],[data-ask]'); if (!t) return;
+    var a = e.target.closest('a.tlink, a.itab'); if (a && DIRTY && a.getAttribute('href')) { e.preventDefault(); return guard(function () { DIRTY = false; location.href = a.getAttribute('href'); }); }
+    var t = e.target.closest('[data-pick],[data-new],[data-del],[data-copy],[data-addsplit],[data-rmsplit],[data-ask],[data-cv],[data-tpl]'); if (!t) return;
+    if (t.dataset.cn != null && t.dataset.cv != null) return setConv(t.dataset.cn, t.dataset.cv);
+    if (t.dataset.tpl != null) {
+      var tp = TEMPLATES[+t.dataset.tpl], next = tp.apply();
+      document.querySelectorAll('.tpl').forEach(function (b) { b.classList.toggle('on', b === t); });
+      setDirty(true);
+      var nm = $('f_name'); (nm && !nm.value ? nm : next || nm).focus();
+      return;
+    }
     if (t.dataset.ask) return answer(t.dataset.ask);
     if (t.dataset.pick) { if (t.dataset.pick === ORIG) return; return guard(function () { edit(LIST.filter(function (x) { return x.token === t.dataset.pick; })[0]); }); }
     if (t.dataset.new) return guard(function () { edit(null); $('f_name').focus(); });

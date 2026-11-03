@@ -26,6 +26,7 @@ http.createServer(async (req, res) => {
   const fn = { '/api/report': report, '/api/team': team, '/api/admin': admin, '/api/creative': creative }[url.pathname];
   if (fn) {
     const chunks = []; for await (const ch of req) chunks.push(ch);
+    if (/[?&]slow=1/.test(req.headers.referer || '')) await new Promise((r) => setTimeout(r, 6000)); // preview the loading bar
     const r = await fn(new Request(url, { method: req.method, headers: { 'x-admin-key': req.headers['x-admin-key'] || '', 'content-type': req.headers['content-type'] || 'application/json' }, body: req.method === 'POST' ? Buffer.concat(chunks) : undefined }));
     res.writeHead(r.status, Object.fromEntries(r.headers));
     res.end(Buffer.from(await r.arrayBuffer()));

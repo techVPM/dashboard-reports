@@ -13,6 +13,8 @@
     "deal_value": 0,
     "conversion_field": "conversions",
     "labels": { "leads": "Leads", "calls": "Booked calls", "deals": "Sales" },
+    "goals": { "cost_per_conversion": 150, "focus_conversions": ["Booked Call"], "result_label": "Booked calls", "roas": 4, "monthly_conversions": 40, "monthly_spend": 12000, "note": "Goal: under $150 per booked call." },
+    "include_paused": false,
     "targets": { "cpl": 35, "cpc": 140, "roas": 3, "breakeven": 2 },
     "notes": [ { "title": "A note from your VPM team", "body": "Anything you want the client to read at the top of Insights." } ],
     "actions": [ { "title": "Example action", "body": "What we are doing next and why.", "priority": "High" } ],

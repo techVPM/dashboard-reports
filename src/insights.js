@@ -193,7 +193,7 @@ function computeInsights() {
   (META.actions || []).forEach(function (a) { acts.push({ title: a.title, body: a.body, priority: a.priority || 'High', team: true }); });
   if (trackGap) notes.push({ title: 'Google counts more conversions than ' + UP, body: 'Google Ads counts other actions too (for example logins or follow-on views), starting with ' + trackGap.c.name + '. This report counts only ' + UP + ', so cost per ' + U + ' here is the number to manage to.' });
   C.filter(function (c) { return stat(c.cur, thrCamp()) === 'fix'; }).sort(function (a, b) { return b.cur.spend - a.cur.spend; }).slice(0, 1).forEach(function (c) {
-    acts.push({ priority: 'High', title: 'Fix or pause ' + c.name, body: (c._cpr && c._cpr !== Infinity ? 'It costs ' + money(c._cpr) + ' per ' + U : 'It has produced no ' + UP) + ' on ' + money(c.cur.spend) + ' of spend' + (HAS.rev && c.cur.spend ? ' (' + xf(c.cur.rev / c.cur.spend) + ' return)' : '') + '. Rework its targeting and creative, or move the budget to stronger campaigns.' });
+    acts.push({ priority: 'High', title: 'Improve ' + c.name, body: (c._cpr && c._cpr !== Infinity ? 'It costs ' + money(c._cpr) + ' per ' + U : 'It has produced no ' + UP) + ' on ' + money(c.cur.spend) + ' of spend' + (HAS.rev && c.cur.spend ? ' (' + xf(c.cur.rev / c.cur.spend) + ' return)' : '') + '. Rework its targeting and creative, or move the budget to stronger campaigns.' });
   });
   if (best && best._cpr !== Infinity && stat(best.cur, thrCamp()) === 'scale') {
     var limited = (best.lostB || 0) >= 0.2;
@@ -208,7 +208,6 @@ function computeInsights() {
   acts = acts.slice(0, 1);   // clients see one clear next step; the rest is for the team
 
   /* ----- notes ----- */
-  notes.push({ title: 'How to read this report', body: 'Conversion rate is conversions divided by clicks. Cost per conversion is spend divided by conversions. "' + rlab() + '" are the actions counted as results for this account' + (mapped ? ', which can be fewer than every conversion Google counts.' : '.') + ' Changes are measured against the previous ' + N + ' days (' + dlab(dms(META.previous ? META.previous.from : iso(START - N * DAY))) + ' to ' + dlab(dms(META.previous ? META.previous.to : iso(START - DAY))) + ').' });
   var tzToday = ''; try { tzToday = new Date().toLocaleDateString('en-CA', { timeZone: META.timezone || 'America/Denver' }); } catch (e) { /* ignore */ }
   if (tzToday && META.range && META.range.to >= tzToday) notes.push({ title: 'Today is still in progress', body: 'This range includes today, so the last day is partial and will keep filling in.' });
   if (W.length && W[W.length - 1].partial && !(META.range.to >= tzToday)) notes.push({ title: 'The last week is partial', body: 'The final week in the weekly table has fewer than seven days, so compare it with care.' });

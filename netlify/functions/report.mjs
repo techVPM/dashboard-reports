@@ -18,7 +18,7 @@ const json = (body, status = 200, extra = {}) =>
 const FRESH_HOURS_PAST = 20;   // range ends yesterday or earlier
 const FRESH_HOURS_TODAY = 2;   // range includes today (still moving)
 
-export default async (req) => {
+export default async (req, context) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   const url = new URL(req.url);
   const token = url.searchParams.get('k') || '';
@@ -44,11 +44,22 @@ export default async (req) => {
   const maxAge = r.to >= r.today ? FRESH_HOURS_TODAY : FRESH_HOURS_PAST;
   if (cached && ageH < maxAge && !force) return json(cached.payload);
 
-  try {
+  const rebuild = async () => {
     const payload = await buildReport({ client, from: r.from, to: r.to });
     await cachePut(key, { saved_at: Date.now(), payload });
     if (!url.searchParams.get('from') && r.to < r.today && [7, 30, 90].includes(payload.meta.range.days)) await cachePut(latestKey(client.token, payload.meta.range.days), { saved_at: Date.now(), payload });
-    return json(payload);
+    return payload;
+  };
+
+  // Faster loads: if an older saved copy exists, show it right away and refresh it in the background.
+  // The next visit gets the fresh numbers. (Only skipped when the team forces a refresh.)
+  if (cached && !force && context && typeof context.waitUntil === 'function') {
+    context.waitUntil(rebuild().catch((e) => console.error('background refresh failed', client.name, e.message)));
+    return json(cached.payload);
+  }
+
+  try {
+    return json(await rebuild());
   } catch (e) {
     console.error('report failed', client.name, e.message, e.detail || '');
     if (cached) {

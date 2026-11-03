@@ -1,12 +1,11 @@
 /* ===== views ===== */
-var S = { view: 'overview', cid: null, type: 'all', scn: 0, met: { o: null, t: null, cd: null }, range: { mode: '30', from: '', to: '' }, page: {}, scope: null, sort: { keywords: ['spend', -1], terms: ['spend', -1], 'keywords-d': ['spend', -1], 'terms-d': ['spend', -1], themes: ['spend', -1], landing: ['spend', -1] } };
+var S = { view: 'overview', cid: null, type: 'all', scn: 0, met: { o: null, t: null, cd: null }, range: { mode: '30', from: '', to: '' }, page: {}, scope: null, more: false, team: /[?&]team=1(&|$)/.test(location.search), sort: { keywords: ['spend', -1], terms: ['spend', -1], 'keywords-d': ['spend', -1], 'terms-d': ['spend', -1], themes: ['spend', -1], landing: ['spend', -1] } };
 var VIEWS = {
   overview: ['Overview', 'How ad spend turns into results'],
   weekly: ['Week by week', 'Every key number, one week at a time'],
   campaigns: ['Campaigns', 'Select a campaign to see its ads, searches and audiences'],
-  videos: ['Videos', 'Which video creatives to scale and which to cut'],
-  ads: ['Ads and searches', 'Ads, keywords and the searches behind them'],
-  insights: ['Insights and actions', 'What the numbers mean and what to do next']
+  creative: ['Ads & Creative', 'Videos, ads and the pages people land on'],
+  insights: ['Insights', 'Wins, what the numbers mean, and our next step']
 };
 var TYPE_LBL = { video: 'Video', search: 'Search', pmax: 'Performance Max', shopping: 'Shopping', display: 'Display', other: 'Other' };
 var ICON = {
@@ -15,8 +14,7 @@ var ICON = {
   trends: '<path d="M3 15l4-5 3 3 6-8"/><path d="M12 5h4v4"/>',
   campaigns: '<path d="M4 3v14"/><path d="M4 4h10l-2 3 2 3H4"/>',
   audiences: '<circle cx="8" cy="7" r="3"/><path d="M2.5 16c.5-3 2.7-4.5 5.5-4.5s5 1.5 5.5 4.5"/><path d="M13 4.5a2.5 2.5 0 010 5M15 12c1.5.6 2.4 1.8 2.7 3.5"/>',
-  videos: '<rect x="2.5" y="4" width="15" height="12" rx="2"/><path d="M8.5 7.8v4.4l4-2.2z"/>',
-  ads: '<path d="M4 3.5h9l3 3V16.5H4z"/><path d="M7 9h6M7 12h6"/>',
+  creative: '<rect x="2.5" y="4" width="15" height="12" rx="2"/><path d="M8.5 7.8v4.4l4-2.2z"/>',
   insights: '<path d="M7 14.5h6M8.2 17h3.6"/><path d="M10 2.5a5 5 0 00-3 9c.6.5 1 1.2 1 2h4c0-.8.4-1.5 1-2a5 5 0 00-3-9z"/>'
 };
 function list() { return C.filter(function (c) { return S.type === 'all' || c.type === S.type; }); }
@@ -58,6 +56,18 @@ function spark(a) {
   a.forEach(function (v, i) { p += (i ? 'L' : 'M') + (i * w / (a.length - 1)).toFixed(1) + ' ' + (h - 3 - (v - mn) / r * (h - 8)).toFixed(1); });
   var ly = h - 3 - (a[a.length - 1] - mn) / r * (h - 8);
   return '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '" aria-hidden="true"><path d="' + p + '" fill="none" stroke="var(--c1)" stroke-width="2"/><circle cx="' + (w - 2) + '" cy="' + ly.toFixed(1) + '" r="3" fill="var(--c3)"/></svg>';
+}
+// The few numbers clients need first. Everything else sits behind "Show more numbers".
+function heroKeys() {
+  var k = ['spend'];
+  if (HAS.rev) k.push('rev', 'roas');
+  if (RK === 'calls') k.push('calls', 'cpc'); else if (RK === 'leads' || RK === 'conv') k.push('leads', 'cpl');
+  return k;
+}
+function kpiBlock(A) {
+  var hk = heroKeys(), rest = KPS().filter(function (d) { return hk.indexOf(d.k) < 0; }).map(function (d) { return d.k; });
+  var more = (rest.length ? kpiCards(A, KPS(), rest, true) : '') + kpiCards(A, KPS2(), null, true);
+  return kpiCards(A, KPS(), hk) + '<details class="morekpi" id="morekpi"' + (S.more ? ' open' : '') + '><summary><span class="mk-open">Show more numbers</span><span class="mk-close">Show fewer numbers</span></summary><div class="mkbody">' + more + '</div></details>';
 }
 function kpiCards(A, defs, keys, small) {
   return '<div class="kpis' + (small ? ' sm' : '') + '">' + defs.filter(function (k) { return !keys || keys.indexOf(k.k) > -1; }).map(function (k) {
@@ -128,7 +138,7 @@ function verdictCol(kind, thr) {
   return [{ k: 'verdict', l: kind === 'camp' ? 'Status' : 'Verdict', v: function (r) { return HAS.rev ? roasO(r) : (r[RK] ? -r.spend / r[RK] : -1e9); }, f: function (r) { return pill(r, kind, thr); } }];
 }
 function campTable(rows) {
-  var cols = [{ k: 'name', l: 'Campaign', nm: 1, v: function (r) { return r.name; }, f: function (r) { return '<b>' + esc(r.name) + '</b><br><span class="tag">' + (TYPE_LBL[r.type] || 'Other') + '</span>'; } }].concat(verdictCol('camp', thrCamp()), outCols(), trafficCols());
+  var cols = [{ k: 'name', l: 'Campaign', nm: 1, v: function (r) { return r.name; }, f: function (r) { return '<b class="cname">' + esc(r.name) + '</b><br><span class="tag">' + (TYPE_LBL[r.type] || 'Other') + '</span><span class="godet">View details ›</span>'; } }].concat(verdictCol('camp', thrCamp()), outCols(), trafficCols());
   rows = rows.map(function (c) { return Object.assign({}, c.cur, { id: c.id, name: c.name, type: c.type }); });
   return tbl('campaigns', cols, rows, function (r) { return ' data-camp="' + esc(r.id) + '" tabindex="0"'; });
 }
@@ -170,7 +180,7 @@ function termTable(id, label, rows) {
 
 /* ---------- panels ---------- */
 function splitPanel(L) {
-  var G = [['scale', 'Earns money', 'good', 'Scale'], ['hold', 'Breaks even', 'warn', 'Hold'], ['fix', 'Loses money', 'bad', 'Fix or pause'], ['nodata', 'Needs outcome data', 'early', 'Track results']];
+  var G = [['scale', 'Profitable', 'good', 'Strong'], ['hold', 'Breaking even', 'warn', 'Steady'], ['fix', 'Below break-even', 'bad', 'Needs work'], ['nodata', 'Needs results data', 'early', 'Track results']];
   if (!HAS.rev) { G[0][1] = 'Performing well'; G[1][1] = 'Acceptable'; G[2][1] = 'Needs work'; }
   var thr = thrCamp();
   var body = G.map(function (g) {
@@ -244,9 +254,9 @@ function goalsPanel(A) {
 function vOverview() {
   var L = list(), A = agg(L); charts = [{ id: 'o', A: A }];
   var D = computeInsights();
-  return kpiCards(A, KPS()) + kpiCards(A, KPS2(), null, true) + goalsPanel(A) +
-    chartCard('o', 'Spend, results and ' + (horizon() ? horizon() + '-day ' : '') + 'outlook', horizon() ? 'Solid line is what happened. Dashed line is where it is heading at the current pace.' : 'Daily trend for the selected range. Pick 14 days or more to see a projection.', A) +
-    panel('Key insights', 'The short version. <a href="#insights" class="lnk" data-go="insights">Read all of it</a>', '<div class="inslist">' + D.insights.slice(0, 3).map(insightCard).join('') + '</div>') +
+  return kpiBlock(A) + goalsPanel(A) +
+    chartCard('o', 'Spend and results over time', 'Daily trend for the selected range.', A) +
+    panel('Key insights', 'The short version. <a href="#insights" class="lnk" data-go="insights">See wins and our next step</a>', '<div class="inslist">' + D.insights.slice(0, 3).map(insightCard).join('') + '</div>') +
     '<div class="two">' + splitPanel(L) + actionsPanel(1) + '</div>';
 }
 function weeklyTable(A, Wk) {
@@ -290,7 +300,7 @@ function vWeekly() {
   var A = agg(list()), Wk = weeks(A);
   return panel('Week by week', 'Weeks start on Monday. ' + (HAS.calls || HAS.leads ? 'Green marks the best full week and red the weakest by cost per ' + sing(rlab()) + '.' : ''), weeklyTable(A, Wk)) +
     '<div class="two">' + panel(rlab() + ' per week', 'Faded bars are partial weeks', '<div class="chart" id="ch-wk1"></div>') + panel('Cost per ' + sing(rlab()), 'Dashed line is the average for the range. Hollow dots are partial weeks.', '<div class="chart" id="ch-wk2"></div>') + '</div>' +
-    '<div class="two">' + panel('By day of week', 'Which days are cheapest for results', dowTable(A)) + panel('Spend by hour', 'Account time. Hover for clicks and results.', '<div class="chart" id="ch-hr"></div>') + '</div>';
+    panel('By day of week', 'Which days are cheapest for results', dowTable(A));
 }
 function projTable(A) {
   var f = forecast(A.d, S.scn), c = A.cur, rows = [], H = horizon();
@@ -328,6 +338,7 @@ function vCampaigns() {
   var sub = 'Selected range';
   if (HAS.rev) sub += ' · colors compare each metric to your targets: ROAS ' + T.roas + 'x';
   else if (target()) sub += ' · colors compare cost per ' + sing(rlab()) + ' with ' + ((RK === 'calls' ? T.cpc : T.cpl) ? 'your ' + money(target()) + ' target' : 'the account average of ' + money(target()));
+  sub = '<b class="clickhint">Click any campaign to see its ads, videos and audiences.</b> ' + sub;
   return panel('All campaigns', sub, list().length ? campTable(list()) : '<p class="msg">No campaigns in this view.</p>');
 }
 function bars(data) {
@@ -349,13 +360,11 @@ function vAudiences() {
   if (age.length || gen.length || dev.length) out += '<div class="two">' + panel(cn + ' by age', sub, bars(age)) + panel(cn + ' by gender', sub, bars(gen)) + '</div>' + panel(cn + ' by device', sub, bars(dev));
   return out;
 }
-function vVideos() {
-  var rows = items('videos');
-  return panel('Video creatives', 'Selected range · scale the best, cut the worst', rows.length ? vidTable(rows, true) : '<p class="msg">No per-video results for this view. Google reports per-video results for YouTube and Demand Gen video ads. Performance Max does not break results out by video.</p>');
-}
-function vAds() {
-  var ads = items('ads'), kw = items('keywords'), tm = items('terms'), out = '';
-  out += panel('Ads', 'Selected range', ads.length ? adTable(ads, true) : '<p class="msg">No ads in this view.</p>');
+function vCreative() {
+  var rows = items('videos'), ads = items('ads'), kw = items('keywords'), tm = items('terms'), out = '';
+  if (rows.length) out += panel('Videos', 'Click a video to watch it', vidTable(rows, true));
+  out += panel('Ads', 'Click an ad to see the page it leads to', ads.length ? adTable(ads, true) : '<p class="msg">No ads in this view.</p>');
+  if (!rows.length && list().some(function (c) { return c.type === 'video'; })) out += '<p class="msg small">Per-video results will show here once Google reports them for this range.</p>';
   // Summaries first (themes, landing pages), then the long lists, 15 rows at a time.
   if (tm.length && TERMG.length) {
     var gs = TERMG.map(function (g) { return { name: g[0], re: g[1], detail: '', camp: '', cid: '', spend: 0, impr: 0, clicks: 0, views: 0, conv: 0, leads: 0, calls: 0, deals: 0, rev: 0 }; }), oth = { name: 'Everything else', detail: '', camp: '', cid: '', spend: 0, impr: 0, clicks: 0, views: 0, conv: 0, leads: 0, calls: 0, deals: 0, rev: 0 };
@@ -369,8 +378,8 @@ function vAds() {
     var lcols = [{ k: 'name', l: 'Landing page', nm: 1, v: function (r) { return r.name; }, f: function (r) { return '<b>' + esc(r.name) + '</b>'; } }].concat(outCols(), trafficCols());
     out += panel('Landing pages', 'Where clicks land', tbl('landing', lcols, lp));
   }
-  if (kw.length) out += panel('Keywords', 'Top keywords by spend', termTable('keywords', 'Keyword', kw));
-  if (tm.length) out += panel('Search terms', 'The searches that triggered your ads, highest spend first. Google hides low-volume terms, so this is only part of Search spend.', termTable('terms', 'Search term', tm));
+  if (S.team && kw.length) out += panel('Keywords <span class="pill early">Team view</span>', 'Top keywords by spend', termTable('keywords', 'Keyword', kw));
+  if (S.team && tm.length) out += panel('Search terms <span class="pill early">Team view</span>', 'The searches that triggered your ads, highest spend first. Google hides low-volume terms, so this is only part of Search spend.', termTable('terms', 'Search term', tm));
   return out;
 }
 var GROUPS = [
@@ -385,11 +394,7 @@ function vInsights() {
   if (D.team.length) out += panel('From your Video Power Marketing team', '', '<div class="inslist">' + D.team.map(function (n) { return insightCard({ tone: 'team', title: n.title, body: n.body }); }).join('') + '</div>');
   out += panel('Our next step', 'What we are focused on now.',
     (D.actions.length ? '<ol class="steps big">' + D.actions.map(function (a, i) { return '<li><span class="n">' + (i + 1) + '</span><div><div class="t">' + esc(a.title) + '</div><div class="d">' + esc(a.body) + '</div></div></li>'; }).join('') + '</ol>' : '<p class="msg">Nothing urgent. The account is on track.</p>'));
-  var gp = GROUPS.map(function (g) {
-    var rows = D.insights.filter(function (i) { return (i.g || 'perf') === g[0]; });
-    return rows.length ? panel(g[1], g[2], '<div class="inslist">' + rows.map(insightCard).join('') + '</div>') : '';
-  }).filter(Boolean);
-  if (gp.length) out += '<div class="masonry">' + gp.join('') + '</div>';
+  if (D.insights.length) out += panel('Key insights', 'What the numbers are saying', '<div class="inslist">' + D.insights.slice(0, 3).map(insightCard).join('') + '</div>');
   if (D.notes.length) out += '<details class="panel fold"><summary>Also worth knowing <span>(' + D.notes.length + ')</span></summary><div class="inslist">' + D.notes.map(function (n) { return insightCard({ tone: 'neutral', title: n.title, body: n.body }); }).join('') + '</div></details>';
   return out;
 }
@@ -398,13 +403,13 @@ function vDetail() {
   if (!c) return '<div class="panel"><p class="msg">Campaign not found.</p></div>';
   var A = agg([c]); charts = [{ id: 'cd', A: A }];
   var out = '<button class="back" data-go="campaigns">‹ All campaigns</button><div class="panel"><div class="ph"><div><h2>' + esc(c.name) + '</h2><p class="sub">' + (TYPE_LBL[c.type] || 'Other') + ' campaign' + (c.budget ? ' · budget ' + money(c.budget) + ' a day' : '') + (c.is != null ? ' · wins ' + pct0(c.is) + ' of eligible searches (' + pct0(c.lostB || 0) + ' lost to budget, ' + pct0(c.lostR || 0) + ' to ad rank)' : '') + '</p></div>' + pill(c.cur, 'camp', thrCamp()) + '</div></div>' +
-    kpiCards(A, KPS()) + kpiCards(A, KPS2(), null, true) + chartCard('cd', 'Campaign trend and outlook', 'Same view as the overview, for this campaign only.', A);
+    kpiBlock(A) + chartCard('cd', 'Campaign trend', 'Daily trend for this campaign.', A);
   function mine(k) { return (ITEMS[k] || []).filter(function (r) { return r.cid === c.id; }); }
   var au = mine('audiences'), vi = mine('videos'), ad = mine('ads'), kw = mine('keywords'), tm = mine('terms');
   if (vi.length) out += panel('Videos', 'Creative inside this campaign', vidTable(vi, false));
   if (ad.length) out += panel('Ads', 'Ads inside this campaign', adTable(ad, false));
-  if (kw.length) out += panel('Keywords', 'Top keywords by spend', termTable('keywords-d', 'Keyword', kw));
-  if (tm.length) out += panel('Search terms', 'Highest-spend searches', termTable('terms-d', 'Search term', tm));
+  if (S.team && kw.length) out += panel('Keywords <span class="pill early">Team view</span>', 'Top keywords by spend', termTable('keywords-d', 'Keyword', kw));
+  if (S.team && tm.length) out += panel('Search terms <span class="pill early">Team view</span>', 'Highest-spend searches', termTable('terms-d', 'Search term', tm));
   if (au.length) out += panel('Audiences', 'Top segments by spend, 5 at a time', audTable(au, false, true));
   var age = groupBy('age', [c.id]), gen = groupBy('gender', [c.id]), dev = groupBy('device', [c.id]), cn = 'Cost per ' + sing(rlab());
   if (age.length || gen.length || dev.length) out += '<div class="three">' + panel(cn + ' by age', '', bars(age)) + panel(cn + ' by gender', '', bars(gen)) + panel(cn + ' by device', '', bars(dev)) + '</div>';

@@ -11,16 +11,17 @@
     <div class="sample" id="stale" hidden>Showing the last saved numbers. Google Ads could not be reached just now, so these may be a little behind.</div>
     <header class="top">
       <div class="ttlblock"><h1 id="cli">Performance report</h1><h2 id="ttl"></h2><p id="sub"></p><p class="updm" id="updm"></p></div>
-      <div class="ctl">
+    </header>
+    <div class="toolbar" role="toolbar" aria-label="Report filters">
+      <div class="tgroup">
         <div class="seg" id="mgrseg" role="group" aria-label="Who manages the campaigns" hidden></div>
         <div class="seg" id="typeseg" role="group" aria-label="Campaign type" hidden></div>
-        <div class="datebox">
-          <div class="seg" id="rangeseg" role="group" aria-label="Date range"></div>
-          <div class="rangebar" id="rangebar"></div>
-        </div>
       </div>
-    </header>
-    <section id="view" aria-live="polite"><div class="panel"><p class="msg">Loading your report</p></div></section>
+      <div class="tgroup tright"><div class="seg" id="rangeseg" role="group" aria-label="Date range"></div></div>
+      <div class="rangebar" id="rangebar"></div>
+    </div>
+    <div class="loader" id="loader" hidden role="status" aria-live="polite"><div class="lbar"><i id="lfill"></i></div><p><b id="lstat">Connecting to Google Ads</b><span id="lhint"></span></p></div>
+    <section id="view" aria-live="polite"></section>
   </main>
 </div>
 <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mtitle">

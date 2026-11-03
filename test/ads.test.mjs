@@ -278,7 +278,10 @@ test('team dashboard row judges a client against its goals', async () => {
   assert.equal(row.report_url, '/x-1234');
   const ok = summarize({ token: 'y-1234', name: 'Y', customer_id: '123-456-7890', goals: { cost_per_conversion: 100000 } }, p);
   assert.equal(ok.overall, 'good');
-  assert.equal(summarize({ token: 'z-1234', name: 'Z', customer_id: '1' }, p).overall, 'none');
+  const z = summarize({ token: 'z-1234', name: 'Z', customer_id: '1' }, p);
+  assert.equal(z.overall, 'nogoals');
+  assert.ok(z.flags.includes('No cost goal') && z.flags.includes('No budget'));
+  assert.match(row.reason, /goal \(/);
 });
 
 test('admin validation catches bad input and fills the link key', async () => {

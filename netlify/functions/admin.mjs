@@ -6,6 +6,24 @@
 import { getClientsWithSource, saveClients, RESERVED } from '../lib/store.mjs';
 import { cleanGoals } from '../lib/goals.mjs';
 import { isAdmin, jsonRes } from '../lib/auth.mjs';
+import { runQuery, digits } from '../lib/ads.mjs';
+
+// Every conversion action in a Google Ads account, with how many it counted in the last 30 days,
+// so the admin page can offer them as tick boxes instead of typing names.
+export async function listConversions(customerId, opts = {}) {
+  const [acts, counts] = await Promise.all([
+    runQuery(customerId, "SELECT conversion_action.name, conversion_action.status, conversion_action.category, conversion_action.primary_for_goal FROM conversion_action WHERE conversion_action.status = 'ENABLED'", opts),
+    runQuery(customerId, 'SELECT segments.conversion_action_name, metrics.all_conversions FROM customer WHERE segments.date DURING LAST_30_DAYS AND metrics.all_conversions > 0', opts).catch(() => []),
+  ]);
+  const by = new Map();
+  for (const r of acts) { const n = r.conversionAction?.name; if (n) by.set(n, { name: n, category: String(r.conversionAction.category || '').toLowerCase().replace(/_/g, ' '), primary: !!r.conversionAction.primaryForGoal, count30: 0 }); }
+  for (const r of counts) {
+    const n = r.segments?.conversionActionName; if (!n) continue;
+    const o = by.get(n) || { name: n, category: '', primary: false, count30: 0 };
+    o.count30 += Number(r.metrics?.allConversions || 0); by.set(n, o);
+  }
+  return [...by.values()].map((o) => ({ ...o, count30: Math.round(o.count30 * 10) / 10 })).sort((a, b) => b.count30 - a.count30 || a.name.localeCompare(b.name));
+}
 
 const TOKEN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 export const makeToken = (name, id) => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '-' + String(id || '').replace(/\D/g, '').slice(-4);
@@ -41,6 +59,14 @@ async function warm(token) {
 
 export default async (req) => {
   if (!isAdmin(req)) return jsonRes({ error: 'Wrong password.' }, 401);
+  const url = new URL(req.url);
+  if (req.method === 'GET' && url.searchParams.get('conversions')) {
+    const id = digits(url.searchParams.get('conversions'));
+    if (id.length !== 10) return jsonRes({ error: 'Add a 10 digit Google Ads ID first.' }, 400);
+    if (process.env.VPM_DEV) return jsonRes({ conversions: [{ name: 'Booked Call', category: 'book appointment', primary: true, count30: 46 }, { name: 'Submit lead form', category: 'submit lead form', primary: false, count30: 56 }, { name: 'Local actions - Directions', category: 'get directions', primary: true, count30: 2 }, { name: 'YouTube follow-on views', category: 'default', primary: false, count30: 1 }] });
+    try { return jsonRes({ conversions: await listConversions(id) }); }
+    catch (e) { return jsonRes({ error: 'Could not read conversions from Google Ads: ' + e.message }, 502); }
+  }
   const { clients, source, saved_at } = await getClientsWithSource();
   if (req.method === 'GET') return jsonRes({ clients, source, saved_at: saved_at || null });
   if (req.method !== 'POST') return jsonRes({ error: 'Not allowed.' }, 405);

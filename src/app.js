@@ -22,9 +22,9 @@ function render() {
     var opts = [['all', HASMIX ? 'All types' : 'All campaigns']].concat(types.map(function (x) { return [x, TYPE_LBL[x] || 'Other']; }));
     seg.innerHTML = opts.map(function (o) { return '<button data-type="' + o[0] + '" class="' + (S.type === o[0] ? 'on' : '') + '" aria-pressed="' + (S.type === o[0]) + '">' + o[1] + '</button>'; }).join('');
   } else { seg.hidden = true; S.type = 'all'; }
-  var f = { overview: vOverview, weekly: vWeekly, campaigns: vCampaigns, videos: vVideos, ads: vAds, insights: vInsights, campaign: vDetail }[S.view];
+  var f = { overview: vOverview, weekly: vWeekly, campaigns: vCampaigns, creative: vCreative, insights: vInsights, campaign: vDetail }[S.view];
   charts = []; view.innerHTML = f(); paintCharts();
-  if (S.view === 'weekly') { var A = agg(list()), Wk = weeks(A); weekChart(document.getElementById('ch-wk1'), Wk, 'bars'); weekChart(document.getElementById('ch-wk2'), Wk, 'line'); hourChart(document.getElementById('ch-hr')); }
+  if (S.view === 'weekly') { var A = agg(list()), Wk = weeks(A); weekChart(document.getElementById('ch-wk1'), Wk, 'bars'); weekChart(document.getElementById('ch-wk2'), Wk, 'line'); }
   try { history.replaceState(null, '', location.search + '#' + (S.view === 'campaign' ? 'c-' + S.cid : S.view)); } catch (e) { /* ignore */ }
 }
 function go(v, cid) { S.view = v; S.cid = cid || null; render(); try { root.scrollIntoView(); } catch (e) { /* ignore */ } window.scrollTo(0, 0); }
@@ -46,10 +46,7 @@ function drawRangeBar() {
   var bar = document.getElementById('rangebar');
   // The chosen dates are shown once: in the date boxes when Custom is open, otherwise in the first chip.
   var info = '';
-  if (loaded) {
-    if (S.range.mode !== 'custom') info += '<div class="chip"><b>' + dlab(START, true) + ' to ' + dlab(START + (N - 1) * DAY, true) + '</b></div>';
-    info += '<div class="chip">vs ' + esc(prevLabel()) + '</div>';
-  }
+  if (loaded) info = '<p class="rtext">' + (S.range.mode !== 'custom' ? '<b>' + dlab(START, true) + ' to ' + dlab(START + (N - 1) * DAY, true) + '</b> · ' : '') + 'compared with the ' + esc(prevLabel()) + '</p>';
   var form = '';
   if (S.range.mode === 'custom') {
     var maxd = iso(Date.now() + DAY);
@@ -58,7 +55,33 @@ function drawRangeBar() {
   bar.className = 'rangebar' + (form ? ' stack' : '');
   bar.innerHTML = form + info;
 }
-function setBusy(b) { view.classList.toggle('busy', b); root.setAttribute('aria-busy', b ? 'true' : 'false'); }
+// Loading bar. Google does not report progress, so the bar moves on a timer and the
+// status line walks through what the server is doing. It jumps to full when the data arrives.
+var LSTEPS = [[0, 'Connecting to Google Ads'], [1.5, 'Gathering campaign results'], [5, 'Pulling videos, ads and searches'], [12, 'Adding up conversions and goals'], [22, 'Almost there. Big accounts take a little longer.']];
+var ltimer = null, lstart = 0, lshow = null;
+function loaderOn() {
+  clearInterval(ltimer); clearTimeout(lshow); lstart = Date.now();
+  var L = document.getElementById('loader'), fill = document.getElementById('lfill');
+  fill.style.width = '0%';
+  // Saved reports come back in well under a second, so only show the bar if it takes longer.
+  lshow = setTimeout(function () { L.hidden = false; }, loaded ? 350 : 0);
+  ltimer = setInterval(function () {
+    var t = (Date.now() - lstart) / 1000, st = LSTEPS[0][1];
+    LSTEPS.forEach(function (x) { if (t >= x[0]) st = x[1]; });
+    fill.style.width = (92 * (1 - Math.exp(-t / 9))).toFixed(1) + '%';
+    document.getElementById('lstat').textContent = st;
+    document.getElementById('lhint').textContent = t > 3 ? ' First load of a new date range can take 20 to 40 seconds.' : '';
+  }, 200);
+}
+function loaderOff() {
+  clearInterval(ltimer); clearTimeout(lshow);
+  var L = document.getElementById('loader');
+  if (L.hidden) return;
+  document.getElementById('lfill').style.width = '100%';
+  document.getElementById('lstat').textContent = 'Done';
+  setTimeout(function () { L.hidden = true; }, 350);
+}
+function setBusy(b) { view.classList.toggle('busy', b); root.setAttribute('aria-busy', b ? 'true' : 'false'); if (b) loaderOn(); else loaderOff(); }
 function banners() {
   document.getElementById('sample').hidden = MODE !== 'demo';
   document.getElementById('stale').hidden = !META.stale;
@@ -91,6 +114,7 @@ function apply(P) {
   RAW = P;
   build(scoped(P)); buildMET(); loaded = true; drawScope();
   var h = ''; try { h = location.hash.slice(1); } catch (e) { /* ignore */ }
+  if (h === 'videos' || h === 'ads') h = 'creative';
   if (!S.fresh) { S.fresh = 1; if (VIEWS[h]) S.view = h; else if (h.indexOf('c-') === 0 && camp(h.slice(2))) { S.view = 'campaign'; S.cid = h.slice(2); } }
   if (S.view === 'campaign' && !camp(S.cid)) S.view = 'campaigns';
   S.met = { o: null, t: null, cd: null }; S.page = {};
@@ -161,6 +185,7 @@ root.addEventListener('submit', function (e) {
   if (!a || !b || a > b) { cto.setCustomValidity('Choose an end date that is on or after the start date.'); cto.reportValidity(); return; }
   S.range.from = a; S.range.to = b; load();
 });
+root.addEventListener('toggle', function (e) { if (e.target && e.target.id === 'morekpi') S.more = e.target.open; }, true);
 root.addEventListener('keydown', function (e) { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('tr[data-camp]')) { e.preventDefault(); go('campaign', e.target.dataset.camp); } });
 root.addEventListener('input', function (e) {
   if (e.target.id !== 'scn') return;
@@ -170,7 +195,7 @@ root.addEventListener('input', function (e) {
 var rt; window.addEventListener('resize', function () {
   clearTimeout(rt); rt = setTimeout(function () {
     paintCharts();
-    if (S.view === 'weekly' && loaded) { var A = agg(list()), Wk = weeks(A); weekChart(document.getElementById('ch-wk1'), Wk, 'bars'); weekChart(document.getElementById('ch-wk2'), Wk, 'line'); hourChart(document.getElementById('ch-hr')); }
+    if (S.view === 'weekly' && loaded) { var A = agg(list()), Wk = weeks(A); weekChart(document.getElementById('ch-wk1'), Wk, 'bars'); weekChart(document.getElementById('ch-wk2'), Wk, 'line'); }
   }, 120);
 });
 

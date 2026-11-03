@@ -1,8 +1,8 @@
 <div class="vpm tm cr" id="vpm">
 <div class="wrap">
   <header class="tbar">
-    <div class="brand">VIDEO POWER<span>MARKETING</span><em class="hubname">Creative Hub</em></div>
-    <div class="tbtns"><a class="tlink" href="/team">All clients</a><button type="button" class="tlink" id="out" hidden>Sign out</button></div>
+    <div class="brand">VIDEO POWER<span>MARKETING</span></div>
+    <div class="tbtns"><nav class="itabs" aria-label="Team pages"><a class="itab" href="/team"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="11" y="3" width="6" height="6" rx="1"/><rect x="3" y="11" width="6" height="6" rx="1"/><rect x="11" y="11" width="6" height="6" rx="1"/></svg><span class="lt">All clients</span><span class="st">Clients</span></a><a class="itab on" href="/creative" aria-current="page"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2"/><path d="M8.5 7.8v4.4l4-2.2z"/></svg><span class="lt">Creative Hub</span><span class="st">Creative</span></a><a class="itab" href="/admin"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="2.5"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/></svg><span class="lt">Clients and goals</span><span class="st">Goals</span></a></nav><button type="button" class="tlink" id="out" hidden>Sign out</button></div>
   </header>
   <div class="thead">
     <div><h1>Creative Hub</h1><p class="sub" id="tsub">Every video running for active clients, and how each one performs.</p></div>
@@ -17,7 +17,7 @@
   <section class="panel filters" id="filters" hidden>
     <label class="fld"><span>Client</span><select id="fclient"></select></label>
     <label class="fld"><span>Search titles</span><input id="fq" type="search" placeholder="For example hook 2, testimonial, 9x16"></label>
-    <label class="fld"><span>Minimum impressions</span><select id="fmin"><option value="0" selected>Any</option><option value="500">500</option><option value="1000">1,000</option><option value="5000">5,000</option><option value="20000">20,000</option></select></label>
+    <label class="fld"><span>Minimum impressions</span><select id="fmin"><option value="0">Any, include small tests</option><option value="500" selected>500</option><option value="1000">1,000</option><option value="5000">5,000</option><option value="20000">20,000</option></select></label>
     <div class="fbtns2"><button type="button" class="obtn" id="csv">Download CSV</button></div>
   </section>
   <section id="sum" class="sumrow"></section>
