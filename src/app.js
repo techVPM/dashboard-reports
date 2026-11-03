@@ -142,7 +142,7 @@ function load() {
 
 /* ---------- events ---------- */
 root.addEventListener('click', function (e) {
-  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-ai],[data-page],[data-close],[data-burger],[data-scope]'); if (!t || !root.contains(t)) return;
+  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-ai],[data-page],[data-close],[data-burger],[data-scope],[data-ps]'); if (!t || !root.contains(t)) return;
   if (t.tagName === 'A') e.preventDefault();
   if (t.dataset.range) {
     var m = t.dataset.range;
@@ -166,6 +166,7 @@ root.addEventListener('click', function (e) {
   if (t.dataset.close) return closeVideo();
   if (t.dataset.vi) return openVideo(+t.dataset.vi);
   if (t.dataset.ai) return openLanding(+t.dataset.ai);
+  if (t.dataset.ps) { var q2 = t.dataset.ps.split(':'); S.ps[q2[0]] = +q2[1]; S.page[q2[0]] = 0; return render(); }
   if (t.dataset.page) { var pp = t.dataset.page.split(':'); S.page[pp[0]] = Math.max(0, (S.page[pp[0]] || 0) + (+pp[1])); return render(); }
   if (t.dataset.go) return go(t.dataset.go);
   if (t.dataset.camp) { S.page = {}; return go('campaign', t.dataset.camp); }

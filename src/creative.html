@@ -6,8 +6,11 @@
   </header>
   <div class="thead">
     <div><h1>Creative Hub</h1><p class="sub" id="tsub">Every video running for active clients, and how each one performs.</p></div>
-    <div class="tctl" id="tctl" hidden><div class="seg" id="scp" role="group" aria-label="Which campaigns"></div><div class="seg" id="rng" role="group" aria-label="Date range"></div></div>
+    <div class="tctl crdates" id="tctl" hidden><div class="seg" id="rng" role="group" aria-label="Date range"></div>
+      <form class="ccustom" id="cform" hidden><label>From <input type="date" id="cfrom" required></label><label>To <input type="date" id="cto" required></label><button class="mbtn" type="submit">Apply</button></form>
+    </div>
   </div>
+  <div class="cprog" id="cprog" hidden><div class="lbar"><i id="cfill"></i></div><p id="ctext"></p></div>
   <form class="panel gate" id="gate" hidden>
     <h2>Team sign in</h2>
     <p class="sub">Use the creative password (CREATIVE_PASSWORD in Netlify) or the admin password.</p>
@@ -15,6 +18,7 @@
     <p class="err" id="gerr" hidden></p>
   </form>
   <section class="panel filters" id="filters" hidden>
+    <div class="fld"><span>Campaigns</span><div class="seg" id="scp" role="group" aria-label="Which campaigns"></div></div>
     <label class="fld"><span>Client</span><select id="fclient"></select></label>
     <label class="fld"><span>Search titles</span><input id="fq" type="search" placeholder="For example hook 2, testimonial, 9x16"></label>
     <label class="fld"><span>Minimum impressions</span><select id="fmin"><option value="0">Any, include small tests</option><option value="500" selected>500</option><option value="1000">1,000</option><option value="5000">5,000</option><option value="20000">20,000</option></select></label>
@@ -35,7 +39,7 @@
   var KEY = 'vpm_admin_key', pw = '';
   try { pw = localStorage.getItem(KEY) || ''; } catch (e) { /* private mode */ }
   var $ = function (id) { return document.getElementById(id); };
-  var SCOPE = 'vpm', DATA = null, DAYS = 30, SORT = ['ctr', -1], SHOW = 50, VIEWROWS = [];
+  var SCOPE = 'vpm', DATA = null, DAYS = 30, CFROM = '', CTO = '', GEN = 0, SORT = ['ctr', -1], SHOW = 50, VIEWROWS = [];
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function money(v) { return v == null ? 'n/a' : '$' + Math.round(v).toLocaleString('en-US'); }
   function money2(v) { return v == null ? 'n/a' : '$' + (v >= 1000 ? Math.round(v).toLocaleString('en-US') : v.toFixed(2)); }
@@ -49,18 +53,51 @@
   $('gate').addEventListener('submit', function (e) { e.preventDefault(); pw = $('pw').value.trim(); if (!pw) return; try { localStorage.setItem(KEY, pw); } catch (er) { /* ignore */ } load(); });
   $('out').addEventListener('click', function () { try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ } pw = ''; gate(); });
 
+  function controls() {
+    $('scp').innerHTML = [['vpm', 'VPM campaigns'], ['all', 'All campaigns'], ['other', 'Not VPM']].map(function (o) { return '<button type="button" data-s="' + o[0] + '" class="' + (SCOPE === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('');
+    $('rng').innerHTML = [[7, 'Last 7 days'], [30, 'Last 30 days'], [90, 'Last 90 days'], ['custom', 'Custom']].map(function (o) { return '<button type="button" data-d="' + o[0] + '" class="' + (String(DAYS) === String(o[0]) ? 'on' : '') + '">' + o[1] + '</button>'; }).join('');
+    $('cform').hidden = DAYS !== 'custom';
+  }
+  $('cform').addEventListener('submit', function (e) {
+    e.preventDefault(); var f = $('cfrom').value, t = $('cto').value;
+    if (!f || !t || f > t) return alert('Pick a start date before the end date.');
+    CFROM = f; CTO = t; load();
+  });
+  // Custom dates are fetched live from Google, three clients at a time, filling in as each one arrives.
+  function loadCustom(j, gen) {
+    var q = (j.tokens || []).slice(), total = q.length, done = 0, fails = [];
+    DATA.videos = []; DATA.missing = []; DATA.range = { from: CFROM, to: CTO };
+    function prog() {
+      $('cprog').hidden = done >= total; $('cfill').style.width = (total ? done / total * 100 : 100) + '%';
+      $('ctext').textContent = 'Loading ' + dlab(CFROM) + ' to ' + dlab(CTO) + ' from Google: ' + done + ' of ' + total + ' clients. Each takes about 10 to 30 seconds.';
+    }
+    prog();
+    function next() {
+      var c = q.shift(); if (!c) return;
+      api('/api/creative?token=' + encodeURIComponent(c.token) + '&from=' + CFROM + '&to=' + CTO + '&scope=' + SCOPE)
+        .then(function (r) { if (gen !== GEN) return; DATA.videos = DATA.videos.concat(r.videos || []); }, function () { fails.push(c.name); })
+        .then(function () { if (gen !== GEN) return; done++; DATA.missing = fails; prog(); header(); draw(); next(); });
+    }
+    next(); next(); next();
+  }
+  function header() {
+    var j = DATA;
+    $('tsub').textContent = (j.range ? dlab(j.range.from) + ' to ' + dlab(j.range.to) + '. ' : '') + 'Every video running for active clients' + (SCOPE === 'vpm' ? ', in VPM campaigns (vpm in the campaign name)' : SCOPE === 'other' ? ', in campaigns without vpm in the name' : '') + '. Same video in several campaigns is added together.';
+    $('foot').textContent = j.missing.length ? (DAYS === 'custom' ? 'Could not load: ' + j.missing.join(', ') + '.' : 'No saved data yet for: ' + j.missing.join(', ') + '. It fills in after the next 10 am refresh, or open that client on the All clients page and press Load now.') : '';
+  }
   function load() {
     if (!pw) return gate();
+    var gen = ++GEN; controls(); $('cprog').hidden = true;
+    if (DAYS === 'custom' && !(CFROM && CTO)) return;
     $('list').innerHTML = '<div class="panel"><p class="msg">Loading every video</p></div>';
-    api('/api/creative?days=' + DAYS + '&scope=' + SCOPE).then(function (j) {
+    api('/api/creative?days=' + (DAYS === 'custom' ? 30 : DAYS) + '&scope=' + SCOPE).then(function (j) {
+      if (gen !== GEN) return;
       DATA = j; $('gate').hidden = true; $('gerr').hidden = true; $('out').hidden = false; $('filters').hidden = false; $('tctl').hidden = false;
       var cur = $('fclient').value || 'all';
       $('fclient').innerHTML = '<option value="all">All clients</option>' + j.clients.map(function (c) { return '<option' + (c === cur ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
-      $('scp').innerHTML = [['vpm', 'VPM campaigns'], ['all', 'All campaigns'], ['other', 'Not VPM']].map(function (o) { return '<button type="button" data-s="' + o[0] + '" class="' + (SCOPE === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('');
-      $('rng').innerHTML = [[7, 'Last 7 days'], [30, 'Last 30 days'], [90, 'Last 90 days']].map(function (o) { return '<button type="button" data-d="' + o[0] + '" class="' + (DAYS === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('');
-      $('tsub').textContent = (j.range ? dlab(j.range.from) + ' to ' + dlab(j.range.to) + '. ' : '') + 'Every video running for active clients' + (SCOPE === 'vpm' ? ', in VPM campaigns (vpm in the campaign name)' : SCOPE === 'other' ? ', in campaigns without vpm in the name' : '') + '. Same video in several campaigns is added together.';
-      $('foot').textContent = j.missing.length ? 'No saved data yet for: ' + j.missing.join(', ') + '. It fills in after the next 10 am refresh, or open that client on the All clients page and press Load now.' : '';
-      draw();
+      controls();
+      if (DAYS === 'custom') return loadCustom(j, gen);
+      header(); draw();
     }).catch(function (e) { if (e && e.auth) gate('That password did not work.'); else $('list').innerHTML = '<div class="panel"><p class="msg">' + esc(e.message) + '</p></div>'; });
   }
 
@@ -132,7 +169,14 @@
     var t = e.target.closest('[data-d],[data-sort],[data-more],[data-play],[data-close],[data-s]'); if (!t) return;
     if (t.dataset.s) { SCOPE = t.dataset.s; return load(); }
     if (t.dataset.close) return close();
-    if (t.dataset.d) { DAYS = Number(t.dataset.d); return load(); }
+    if (t.dataset.d) {
+      if (t.dataset.d === 'custom') {
+        DAYS = 'custom';
+        if (!CFROM) { var d = new Date(Date.now() - 864e5); CTO = d.toISOString().slice(0, 10); CFROM = new Date(d.getTime() - 29 * 864e5).toISOString().slice(0, 10); }
+        $('cfrom').value = CFROM; $('cto').value = CTO; controls(); return;
+      }
+      DAYS = Number(t.dataset.d); return load();
+    }
     if (t.dataset.sort) { var k = t.dataset.sort; SORT = SORT[0] === k ? [k, -SORT[1]] : [k, k === 'title' || k === 'client' || k === 'cpa' ? 1 : -1]; return draw(); }
     if (t.dataset.more) { SHOW += 50; return draw(); }
     if (t.dataset.play != null) return play(t.dataset.play, t.dataset.title, t.dataset.meta);

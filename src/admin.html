@@ -178,13 +178,19 @@
     var el = $('cpick'); if (!el) return;
     if (CONV.err) { el.innerHTML = '<p class="sub">' + esc(CONV.err) + ' You can still type the names below.</p>'; $('typed').open = true; return; }
     if (!CONV.list) { el.innerHTML = '<p class="sub">Add the Google Ads ID above to see this account\'s conversion actions.</p>'; return; }
-    el.innerHTML = '<p class="sub">Pick which conversions count as results for this client. "Watch" shows them on the team dashboard without counting them.</p><div class="crows">' + pickRows() + '</div>';
+    // Once conversions are picked, the list folds away into one summary line. Click it to change.
+    var main = lines('g_focus'), watch = lines('g_sec');
+    if (CONV.open == null) CONV.open = !main.length;
+    var sum = main.length ? '<b>Main result:</b> ' + main.map(esc).join(', ') + (watch.length ? ' <span class="dot">·</span> <b>Watching:</b> ' + watch.map(esc).join(', ') : '') : '<b>No main conversion picked yet</b>';
+    el.innerHTML = '<details class="cdrop" id="cdrop"' + (CONV.open ? ' open' : '') + '><summary><span class="csum">' + sum + '</span><span class="cchg"><span class="o">Change</span><span class="c">Done</span></span></summary>' +
+      '<p class="sub">Pick which conversions count as results for this client. "Watch" shows them on the team dashboard without counting them.</p><div class="crows">' + pickRows() + '</div></details>';
+    $('cdrop').addEventListener('toggle', function () { CONV.open = $('cdrop').open; });
   }
   function loadConversions() {
     var id = (val('f_cid') || '').replace(/\D/g, '');
     if (id.length !== 10) { CONV = { cid: '', list: null, err: '' }; return drawPicker(); }
-    if (CONV.cid === id && (CONV.list || CONV.err)) return drawPicker();
-    CONV = { cid: id, list: null, err: '' };
+    if (CONV.cid === id && (CONV.list || CONV.err)) { CONV.open = null; return drawPicker(); }
+    CONV = { cid: id, list: null, err: '', open: null };
     $('cpick').innerHTML = '<p class="sub">Loading the conversion actions from this Google Ads account.</p>';
     api('/api/admin?conversions=' + id).then(function (j) { if (CONV.cid !== id) return; CONV.list = j.conversions || []; drawPicker(); })
       .catch(function (e) { if (CONV.cid !== id) return; CONV.err = e.message || 'Could not load conversions.'; drawPicker(); });

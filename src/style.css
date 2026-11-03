@@ -417,3 +417,21 @@
 .vpm .toolbar .tgroup:first-child:not(:has(.seg:not([hidden]))){display:none}
 .vpm .toolbar .tright{order:2;margin-left:0}
 .vpm .toolbar .rangebar{order:3;flex:1 1 220px}
+/* ---- v2.1: dates top right, campaign filters in the bar below ---- */
+.vpm .top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px 24px;flex-wrap:wrap}
+.vpm .top .datebox{display:flex;flex-direction:column;align-items:flex-end;gap:8px;max-width:100%}
+.vpm .top .rangebar,.vpm .top .rangebar.stack{display:flex;flex-direction:column;align-items:flex-end;gap:8px;margin:0}
+.vpm .top .rangebar:empty{display:none}
+.vpm .top .rtext{text-align:right}
+.vpm .top .custom{justify-content:flex-end}
+.vpm .toolbar{display:flex;flex-wrap:wrap;gap:8px;padding:8px 10px}
+.vpm .toolbar:not(:has(.seg:not([hidden]))){display:none}
+.vpm .psize{display:flex;align-items:center;gap:8px}
+.vpm .psize .seg button{padding:3px 10px;font-size:13px}
+@media (max-width:900px){
+.vpm .top .datebox,.vpm .top .rangebar{align-items:stretch;width:100%}
+.vpm .top .rtext{text-align:left}
+.vpm .top .custom{justify-content:flex-start}
+.vpm .toolbar .seg{width:100%}
+.vpm .pager{flex-direction:column;align-items:flex-start}
+}

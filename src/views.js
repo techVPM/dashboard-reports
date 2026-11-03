@@ -1,5 +1,5 @@
 /* ===== views ===== */
-var S = { view: 'overview', cid: null, type: 'all', scn: 0, met: { o: null, t: null, cd: null }, range: { mode: '30', from: '', to: '' }, page: {}, scope: null, more: false, team: /[?&]team=1(&|$)/.test(location.search), sort: { keywords: ['spend', -1], terms: ['spend', -1], 'keywords-d': ['spend', -1], 'terms-d': ['spend', -1], themes: ['spend', -1], landing: ['spend', -1] } };
+var S = { view: 'overview', cid: null, type: 'all', scn: 0, met: { o: null, t: null, cd: null }, range: { mode: '30', from: '', to: '' }, page: {}, ps: {}, scope: null, more: false, team: /[?&]team=1(&|$)/.test(location.search), sort: { keywords: ['spend', -1], terms: ['spend', -1], 'keywords-d': ['spend', -1], 'terms-d': ['spend', -1], themes: ['spend', -1], landing: ['spend', -1] } };
 var VIEWS = {
   overview: ['Overview', 'How ad spend turns into results'],
   weekly: ['Week by week', 'Every key number, one week at a time'],
@@ -94,14 +94,20 @@ function paintCharts() { charts.forEach(function (c) { drawChart(document.getEle
 /* ---------- tables ---------- */
 function vOf(c, r) { return c.v(r); }
 var TERM_PAGE = 8, AD_PAGE = 10;
+// Tables on the Ads & Creative tab show 5 rows to start, with a 5 / 10 / 20 per page choice.
+var FLEX_IDS = ['videos', 'ads', 'themes', 'landing', 'keywords', 'terms'], PS_OPTS = [5, 10, 20];
 function tbl(id, cols, rows, rowAttr, pageSize) {
+  var flex = S.view === 'creative' && FLEX_IDS.indexOf(id) > -1;
+  if (flex) pageSize = (S.ps && S.ps[id]) || 5;
   var st = S.sort[id] || ['verdict', -1];
   var c = cols.filter(function (x) { return x.k === st[0]; })[0];
   if (!c) { st = ['spend', -1]; c = cols.filter(function (x) { return x.k === 'spend'; })[0]; }
   if (c) rows = rows.slice().sort(function (a, b) { var x = vOf(c, a), y = vOf(c, b); if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (x > y ? 1 : x < y ? -1 : 0) * st[1]; });
   var total = rows.length, pg = 0, pages = 1;
   if (pageSize && total > pageSize) { pages = Math.ceil(total / pageSize); pg = Math.min(S.page[id] || 0, pages - 1); S.page[id] = pg; rows = rows.slice(pg * pageSize, (pg + 1) * pageSize); }
-  var pager = pages > 1 ? '<div class="pager"><span>Showing ' + (pg * pageSize + 1) + ' to ' + (pg * pageSize + rows.length) + ' of ' + total + '</span><div><button type="button" data-page="' + id + ':-1"' + (pg === 0 ? ' disabled' : '') + '>&lsaquo; Previous</button><span class="pn">Page ' + (pg + 1) + ' of ' + pages + '</span><button type="button" data-page="' + id + ':1"' + (pg >= pages - 1 ? ' disabled' : '') + '>Next &rsaquo;</button></div></div>' : '';
+  var sizes = flex && total > PS_OPTS[0] ? '<div class="psize"><span>Show</span><div class="seg">' + PS_OPTS.map(function (n) { return '<button type="button" data-ps="' + id + ':' + n + '" class="' + (pageSize === n ? 'on' : '') + '" aria-pressed="' + (pageSize === n) + '">' + n + '</button>'; }).join('') + '</div><span>per page</span></div>' : '';
+  var nav = pages > 1 ? '<div><button type="button" data-page="' + id + ':-1"' + (pg === 0 ? ' disabled' : '') + '>&lsaquo; Previous</button><span class="pn">Page ' + (pg + 1) + ' of ' + pages + '</span><button type="button" data-page="' + id + ':1"' + (pg >= pages - 1 ? ' disabled' : '') + '>Next &rsaquo;</button></div>' : '';
+  var pager = pages > 1 || sizes ? '<div class="pager"><span>Showing ' + (pg * pageSize + 1) + ' to ' + (pg * pageSize + rows.length) + ' of ' + total + '</span>' + sizes + nav + '</div>' : '';
   return '<div class="tw"><table class="t"><thead><tr>' + cols.map(function (c2) {
     var on = st[0] === c2.k; return '<th class="' + (c2.n ? 'n' : '') + '" aria-sort="' + (on ? (st[1] > 0 ? 'ascending' : 'descending') : 'none') + '"><button data-sort="' + id + ':' + c2.k + '">' + c2.l + (on ? (st[1] > 0 ? ' ▲' : ' ▼') : '') + '</button></th>';
   }).join('') + '</tr></thead><tbody>' + rows.map(function (r) {
