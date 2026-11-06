@@ -4,7 +4,7 @@
 
 import { applyGoals } from './goals.mjs';
 // Bump when the Google queries change, so saved reports built by older code are rebuilt.
-export const DATA_VERSION = '1.9';
+export const DATA_VERSION = '2.4';
 
 const DAY = 864e5;
 export const addDays = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * DAY).toISOString().slice(0, 10);
@@ -88,7 +88,7 @@ export function resetTokenCache() { tokenCache = { value: null, exp: 0 }; }
 // Fields that are nice to have. If a newer API version drops or renames one, the query is retried without it.
 // Google renamed video views (video_views <-> video_trueview_views) between versions, so either name is tried.
 const ALT_FIELDS = { 'metrics.video_trueview_views': 'metrics.video_views', 'metrics.video_views': 'metrics.video_trueview_views' };
-const OPTIONAL_FIELDS = ['metrics.video_views', 'metrics.video_trueview_views', 'metrics.video_quartile_p25_rate', 'metrics.video_quartile_p50_rate', 'metrics.video_quartile_p100_rate'];
+const OPTIONAL_FIELDS = ['metrics.video_views', 'metrics.video_trueview_views', 'metrics.video_quartile_p25_rate', 'metrics.video_quartile_p50_rate', 'metrics.video_quartile_p75_rate', 'metrics.video_quartile_p100_rate'];
 const dropField = (q, f) => q.replace(new RegExp(',\\s*' + f.replace(/\./g, '\\.') + '(?![\\w.])', 'g'), '');
 const swapField = (q, a, b) => q.replace(new RegExp(a.replace(/\./g, '\\.') + '(?![\\w.])', 'g'), b);
 
@@ -176,7 +176,7 @@ export const ITEM_SPECS = [
   {
     kind: 'videos', from: 'video', video: true, order: true, limit: 80, src: 'video',
     fields: ['campaign.id', 'video.id', 'video.title', 'video.duration_millis'],
-    extraMetrics: ['metrics.video_quartile_p25_rate', 'metrics.video_quartile_p50_rate', 'metrics.video_quartile_p100_rate'],
+    extraMetrics: ['metrics.video_quartile_p25_rate', 'metrics.video_quartile_p50_rate', 'metrics.video_quartile_p75_rate', 'metrics.video_quartile_p100_rate'],
     keyFields: ['campaign.id', 'video.id'],
     key: (r) => r.campaign?.id + '|' + r.video?.id,
     item: (r) => {
@@ -379,6 +379,10 @@ export async function buildReport({ client: rawClient, from, to, env = process.e
       : Promise.resolve(null),
   }));
 
+  // First and last day each video ran in this range: powers "new this week" and "running or paused".
+  const vdaysP = settle('video days', runQuery(customerId,
+    `SELECT campaign.id, ${sw ? 'campaign.status, ' : ''}video.id, segments.date, metrics.impressions FROM video WHERE ${dateWhere(from, to)} AND metrics.impressions > 0${andSw}`, opts), warnings);
+
   const [core, conv, info] = await Promise.all([coreP, convP, infoP]);
 
   // ----- campaigns + daily
@@ -437,12 +441,12 @@ export async function buildReport({ client: rawClient, from, to, env = process.e
     const map = new Map();
     for (const r of baseRows) {
       const k = spec.key(r);
-      if (!map.has(k)) map.set(k, { ...spec.item(r), ...emptyAgg(), ...(spec.extraMetrics ? { _q: [0, 0, 0, 0] } : {}) });
+      if (!map.has(k)) map.set(k, { ...spec.item(r), ...emptyAgg(), ...(spec.extraMetrics ? { _q: [0, 0, 0, 0, 0] } : {}) });
       const it = map.get(k);
       addMetrics(it, r);
       if (it._q) {
         const m = r.metrics || {}, w = num(m.impressions);
-        if (m.videoQuartileP25Rate != null) { it._q[0] += num(m.videoQuartileP25Rate) * w; it._q[1] += num(m.videoQuartileP50Rate) * w; it._q[2] += num(m.videoQuartileP100Rate) * w; it._q[3] += w; }
+        if (m.videoQuartileP25Rate != null) { it._q[0] += num(m.videoQuartileP25Rate) * w; it._q[1] += num(m.videoQuartileP50Rate) * w; it._q[2] += num(m.videoQuartileP100Rate) * w; it._q[3] += w; it._q[4] += num(m.videoQuartileP75Rate) * w; }
       }
     }
     if (splitRows) {
@@ -456,7 +460,7 @@ export async function buildReport({ client: rawClient, from, to, env = process.e
     const list = [...map.values()].map((it) => {
       const q = it._q; delete it._q;
       const f = finish(it, classifier, client.deal_value);
-      if (q && q[3]) { f.p25 = r2(q[0] / q[3]); f.p50 = r2(q[1] / q[3]); f.p100 = r2(q[2] / q[3]); }
+      if (q && q[3]) { f.p25 = r2(q[0] / q[3]); f.p50 = r2(q[1] / q[3]); f.p75 = r2(q[4] / q[3]); f.p100 = r2(q[2] / q[3]); }
       if (spec.src) f._src = spec.src;
       return f;
     });
@@ -484,6 +488,15 @@ export async function buildReport({ client: rawClient, from, to, env = process.e
       for (const f of ['spend', 'impressions', 'clicks', 'views', 'conversions', 'leads', 'calls', 'deals', 'revenue']) cur[f] = r2(cur[f] + v[f]);
     }
     items.videos = [...merged.values()].map(({ _src, ...v }) => v);
+    const vd = new Map();
+    for (const r of (await vdaysP) || []) {
+      const k = r.campaign?.id + '|' + r.video?.id, d = r.segments?.date;
+      if (!d) continue;
+      const o = vd.get(k) || { first: d, last: d };
+      if (d < o.first) o.first = d; if (d > o.last) o.last = d;
+      vd.set(k, o);
+    }
+    for (const v of items.videos) { const o = vd.get(v.campaign_id + '|' + v.video_id); if (o) { v.first_day = o.first; v.last_day = o.last; } }
   }
   for (const k of Object.keys(items)) items[k].sort((a, b) => b.spend - a.spend);
 

@@ -112,11 +112,23 @@ function buildItems(rows, camps, mode) {
   if (mode === 'calls') {
     for (const list of Object.values(items)) for (const it of list) { it.leads = 0; it.deals = 0; it.revenue = 0; }
   }
-  items.videos.forEach((v, i) => { const s = 0.35 + ((i * 37) % 30) / 100; v.p25 = r2(s); v.p50 = r2(s * 0.62); v.p100 = r2(s * 0.28); });
+  items.videos.forEach((v, i) => {
+    const s = 0.35 + ((i * 37) % 30) / 100; v.p25 = r2(s); v.p50 = r2(s * 0.62); v.p100 = r2(s * 0.28); });
   for (const k of Object.keys(items)) items[k].sort((a, b) => b.spend - a.spend);
   return items;
 }
 
+// Sample first and last days so the preview shows new, running and paused videos.
+function datedVideos(items, from, to) {
+  const len = daysBetween(from, to);
+  items.videos.forEach((v, i) => {
+    if (/Still Thinking/.test(v.name)) v.spend = Math.round(v.spend * 15) / 100; // one cheap winner, for the underfunded view
+    const stopBack = i % 6 === 5 ? 9 : 0, startBack = Math.max(i % 5 === 0 ? 3 : i % 7 === 0 ? 10 : len, stopBack + 4);
+    v.first_day = addDays(to, -Math.min(len, startBack)); v.last_day = addDays(to, -Math.min(len, stopBack));
+    if (v.p25 != null) v.p75 = Math.round(((v.p50 + v.p100) / 2) * 100) / 100;
+  });
+  return items;
+}
 export function demoReport(token, from, to) {
   const mode = token === 'demo-calls' ? 'calls' : 'full';
   const len = daysBetween(from, to) + 1;
@@ -145,6 +157,8 @@ export function demoReport(token, from, to) {
       });
     }
   }
+  // the calls sample has a quiet spell at the end, so the team page shows an alert
+  if (mode === 'calls') for (const r of rows) if (r.date > addDays(to, -3)) { r.calls = 0; r.conversions = 0; }
   const cur = rows.filter((r) => r.date >= from);
   const info = {
     1003: { budget: 150, impression_share: 0.082, lost_budget: 0.31, lost_rank: 0.58 },
@@ -171,6 +185,6 @@ export function demoReport(token, from, to) {
     },
     campaigns: camps,
     daily: rows,
-    items: buildItems(cur, CAMPS, mode),
+    items: datedVideos(buildItems(cur, CAMPS, mode), from, to),
   };
 }

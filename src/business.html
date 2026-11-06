@@ -24,7 +24,14 @@
   var KEY = 'vpm_admin_key', pw = '';
   try { pw = localStorage.getItem(KEY) || ''; } catch (e) { /* private mode */ }
   var $ = function (id) { return document.getElementById(id); };
-  var SNAP = null, SAVED = 0, FILT = 'active', SORT = ['cash', -1];
+  var SNAP = null, SAVED = 0, FILT = 'active', SORT = ['cash', -1], PS = { bill: 5, cli: 5 }, PG = { bill: 0, cli: 0 };
+  // 5 rows to start, with a 5 / 10 / 20 per page choice and Previous / Next.
+  function pager(id, total) {
+    if (total <= 5) return '';
+    var size = PS[id], pages = Math.ceil(total / size), pg = Math.min(PG[id], pages - 1); PG[id] = pg;
+    return '<div class="pager"><span>Showing ' + (pg * size + 1) + ' to ' + Math.min(total, (pg + 1) * size) + ' of ' + total + '</span><div class="psize"><span>Show</span><div class="seg">' + [5, 10, 20].map(function (n) { return '<button type="button" data-ps="' + id + ':' + n + '" class="' + (size === n ? 'on' : '') + '">' + n + '</button>'; }).join('') + '</div><span>per page</span></div>' + (pages > 1 ? '<div><button type="button" data-pg="' + id + ':-1"' + (pg === 0 ? ' disabled' : '') + '>&lsaquo; Previous</button><span class="pn">Page ' + (pg + 1) + ' of ' + pages + '</span><button type="button" data-pg="' + id + ':1"' + (pg >= pages - 1 ? ' disabled' : '') + '>Next &rsaquo;</button></div>' : '') + '</div>';
+  }
+  function slice(id, rows) { var size = PS[id], pages = Math.max(1, Math.ceil(rows.length / size)); PG[id] = Math.min(PG[id], pages - 1); return rows.slice(PG[id] * size, PG[id] * size + size); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function money(v) { return v == null ? 'n/a' : '$' + Math.round(v).toLocaleString('en-US'); }
   function int(v) { return v == null ? 'n/a' : Math.round(v).toLocaleString('en-US'); }
@@ -76,6 +83,38 @@
     }).join('');
     return '<svg class="bchart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Monthly chart">' + g + '</svg>';
   }
+  function cnt(n, base) { return base ? ' <small class="vcnt">(' + n + ' of ' + base + ')</small>' : ''; }
+  function sm(v) { var a = Math.abs(v); return (v < 0 ? '-' : '') + '$' + (a >= 1000 ? (a / 1000).toFixed(a >= 100000 ? 0 : 1).replace(/\.0$/, '') + 'k' : Math.round(a)); }
+  // Recurring revenue: a line for what monthly clients pay at each month end, and under it the moves that made it.
+  function mrrChart(rows) {
+    var W = 560, P = 30, top = 22, lineH = 110, base = top + lineH, mh = 30, mid = base + mh + 16, H = mid + mh + 24;
+    var vals = rows.map(function (r) { return r.mrr || 0; }), max = Math.max.apply(null, vals.concat([1]));
+    var lo = Math.min.apply(null, vals), min = lo > 0 ? Math.floor(lo * 0.6 / 1000) * 1000 : 0; // line starts near the lowest month so changes are visible
+    var bw = (W - P * 2) / rows.length;
+    var X = function (i) { return P + i * bw + bw / 2; }, Y = function (v) { return base - (v - min) / (max - min || 1) * lineH; };
+    var mmax = Math.max.apply(null, rows.map(function (r) { return Math.max(r.mrr_new || 0, r.mrr_lost || 0, Math.abs(r.mrr_changed || 0)); }).concat([1]));
+    var pts = rows.map(function (r, i) { return X(i).toFixed(1) + ',' + Y(r.mrr || 0).toFixed(1); }).join(' ');
+    var g = '<line x1="' + P + '" x2="' + (W - P) + '" y1="' + mid + '" y2="' + mid + '" class="axis"/>' +
+      '<polyline points="' + pts + '" fill="none" stroke="var(--c1)" stroke-width="2.5" stroke-linejoin="round"/>';
+    rows.forEach(function (r, i) {
+      var x = X(i), w = Math.min(10, bw / 4);
+      var tip = mlab(r.month) + ': ' + money(r.mrr) + ' recurring. New ' + money(r.mrr_new) + ', lost ' + money(r.mrr_lost) + ', fee changes ' + (r.mrr_changed >= 0 ? '+' : '-') + money(Math.abs(r.mrr_changed));
+      var hN = (r.mrr_new || 0) / mmax * mh, hL = (r.mrr_lost || 0) / mmax * mh, hC = Math.abs(r.mrr_changed || 0) / mmax * mh;
+      g += '<g><title>' + esc(tip) + '</title><rect x="' + (x - bw / 2).toFixed(1) + '" y="0" width="' + bw.toFixed(1) + '" height="' + H + '" fill="transparent"/>' +
+        '<circle cx="' + x.toFixed(1) + '" cy="' + Y(r.mrr || 0).toFixed(1) + '" r="3.5" fill="var(--c1)"/>' +
+        (hN ? '<rect x="' + (x - w * 1.5 - 1).toFixed(1) + '" y="' + (mid - hN).toFixed(1) + '" width="' + w.toFixed(1) + '" height="' + hN.toFixed(1) + '" fill="var(--good)" rx="2"/>' : '') +
+        (hL ? '<rect x="' + (x - w / 2).toFixed(1) + '" y="' + mid + '" width="' + w.toFixed(1) + '" height="' + hL.toFixed(1) + '" fill="var(--bad)" rx="2"/>' : '') +
+        (hC ? '<rect x="' + (x + w / 2 + 1).toFixed(1) + '" y="' + (r.mrr_changed >= 0 ? mid - hC : mid).toFixed(1) + '" width="' + w.toFixed(1) + '" height="' + hC.toFixed(1) + '" fill="var(--muted)" rx="2"/>' : '') +
+        (i === rows.length - 1 || r.mrr === max ? '<text x="' + x.toFixed(1) + '" y="' + (Y(r.mrr || 0) - 9).toFixed(1) + '" text-anchor="middle" class="cv">' + sm(r.mrr || 0) + '</text>' : '') +
+        '<text x="' + x.toFixed(1) + '" y="' + (H - 4) + '" text-anchor="middle" class="cx">' + mlab(r.month) + '</text></g>';
+    });
+    return '<svg class="bchart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Recurring revenue by month">' + g + '</svg>' +
+      '<div class="mkey"><span><i style="background:var(--c1)"></i>Recurring revenue</span><span><i style="background:var(--good)"></i>New clients</span><span><i style="background:var(--bad)"></i>Lost clients</span><span><i style="background:var(--muted)"></i>Fee changes</span></div>';
+  }
+  function hbars(list, label, val, fmt, color) {
+    var max = Math.max.apply(null, list.map(val).concat([1]));
+    return '<div class="hbars">' + list.map(function (o) { return '<div class="hb"><span class="hbl">' + esc(label(o)) + '</span><span class="hbt"><i style="width:' + Math.max(2, val(o) / max * 100).toFixed(1) + '%;background:' + color + '"></i></span><b>' + fmt(o) + '</b></div>'; }).join('') + '</div>';
+  }
   function moves(rows) {
     return '<div class="moves">' + rows.slice(-6).map(function (r) { return '<span><b>' + mlab(r.month) + '</b> <i class="up">+' + r.new + '</i> <i class="dn">-' + r.lost + '</i></span>'; }).join('') + '</div>';
   }
@@ -84,24 +123,26 @@
     var rows = SNAP.clients.filter(function (r) { return FILT === 'all' || (FILT === 'active' ? r.active : !r.active); });
     var k = SORT[0], d = SORT[1];
     rows.sort(function (a, b) { var x = a[k], y = b[k]; if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (typeof x === 'string' ? x.localeCompare(y) : x - y) * d; });
-    var cols = [['name', 'Client'], ['active', 'Status'], ['start', 'Started'], ['end', 'Ended'], ['months', 'Months'], ['retainer', 'Monthly fee'], ['cash', 'Lifetime cash'], ['reason', 'Why they left']];
+    var cols = [['name', 'Client'], ['active', 'Status'], ['start', 'Started'], ['end', 'Ended'], ['months', 'Months'], ['retainer', 'Monthly fee'], ['cash', 'Lifetime cash'], ['source', 'Source'], ['reason', 'Why they left']];
     if (FILT === 'active') cols = cols.filter(function (c) { return c[0] !== 'end' && c[0] !== 'reason'; });
     var est = '<sup class="est" title="Estimated from invoices. Add the GoHighLevel custom field for the exact value.">~</sup>';
     var head = '<thead><tr>' + cols.map(function (c) { var on = SORT[0] === c[0]; return '<th class="' + (/months|retainer|cash/.test(c[0]) ? 'n' : '') + '"><button type="button" data-sort="' + c[0] + '">' + c[1] + (on ? (SORT[1] > 0 ? ' ▲' : ' ▼') : '') + '</button></th>'; }).join('') + '</tr></thead>';
-    var body = rows.map(function (r) {
+    var total = rows.length;
+    var body = slice('cli', rows).map(function (r) {
       var cells = {
-        name: '<td class="nm"><b>' + (r.report ? '<a href="' + esc(r.report) + '" target="_blank" rel="noopener">' + esc(r.name) + '</a>' : esc(r.name)) + '</b>' + (r.contact && r.contact.toLowerCase() !== r.name.toLowerCase() ? '<br><small class="mut">' + esc(r.contact) + '</small>' : '') + (r.monthly ? '' : '<br><span class="tag">One-time project</span>') + '</td>',
+        name: '<td class="nm"><b>' + (r.report ? '<a href="' + esc(r.report) + '" target="_blank" rel="noopener">' + esc(r.name) + '</a>' : esc(r.name)) + '</b>' + (r.contact && r.contact.toLowerCase() !== r.name.toLowerCase() ? '<br><small class="mut">' + esc(r.contact) + '</small>' : '') + (r.monthly ? '' : '<br><span class="tag">One-time project</span>') + (r.token ? '<br><a class="plink" href="/profile?c=' + encodeURIComponent(r.token) + '">Client profile</a>' : '') + '</td>',
         active: '<td><span class="pill ' + (r.active ? 'good' : 'early') + '">' + (r.active ? 'Active' : 'Former') + '</span></td>',
         start: '<td>' + dlab(r.start) + (r.start_est ? est : '') + '</td>',
         end: '<td>' + (r.end ? dlab(r.end) + (r.end_est ? est : '') : '') + '</td>',
         months: '<td class="n">' + mo(r.months) + '</td>',
         retainer: '<td class="n">' + (r.retainer ? money(r.retainer) + (r.retainer_est ? est : '') : '<span class="mut">n/a</span>') + '</td>',
         cash: '<td class="n">' + money(r.cash) + '</td>',
-        reason: '<td>' + esc(r.reason || '') + '</td>'
+        reason: '<td>' + esc(r.reason || '') + '</td>',
+        source: '<td>' + esc(r.source || '') + '</td>'
       };
       return '<tr>' + cols.map(function (c) { return cells[c[0]]; }).join('') + '</tr>';
     }).join('');
-    return '<div class="tw"><table class="t">' + head + '<tbody>' + (body || '<tr><td colspan="8" class="mut">No clients in this group.</td></tr>') + '</tbody></table></div><p class="sub legend2"><sup class="est">~</sup> estimated from invoices. Client names link to their ad report when the GoHighLevel contact has their Google Ads ID.</p>';
+    return '<div class="tw"><table class="t">' + head + '<tbody>' + (body || '<tr><td colspan="9" class="mut">No clients in this group.</td></tr>') + '</tbody></table></div>' + pager('cli', total) + '<p class="sub legend2"><sup class="est">~</sup> estimated from invoices. Client names link to their ad report when the GoHighLevel contact has their Google Ads ID.</p>';
   }
 
   function draw() {
@@ -112,27 +153,51 @@
       tile('Monthly recurring revenue', money(K.mrr), K.avg_retainer ? money(K.avg_retainer) + ' per client' : '') +
       tile('New clients this year', int(K.new_year), '') +
       tile('Clients lost this year', int(K.lost_year), K.lost_month ? K.lost_month + ' this month' : '') +
-      tile('Churn this year', pct(K.churn_year), K.year_base ? K.lost_year + ' of ' + K.year_base + ' monthly clients' : '', K.churn_year > 0.4 ? 'bad' : '') +
+      tile('Churn this year', pct(K.churn_year) + cnt(K.lost_year, K.year_base), K.year_base ? K.lost_year + ' lost of ' + K.year_base + ' monthly clients this year' : '', K.churn_year > 0.4 ? 'bad' : '') +
+      tile('Monthly churn', pct(K.churn_monthly) + (K.churn_base_6m ? ' <small class="vcnt">(' + K.churn_lost_6m + ' lost)</small>' : ''), K.churn_base_6m ? 'average month, last 6 full months (' + K.churn_lost_6m + ' lost of ' + K.churn_base_6m + ' client-months)' : '') +
       tile('Average time as a client', mo(K.avg_months), 'median ' + mo(K.median_months)) +
-      tile('Stay 6 months or more', pct(K.reach6), K.reach12 != null ? pct(K.reach12) + ' reach 12 months' : '') +
+      tile('Stay 6 months or more', pct(K.reach6) + cnt(K.reach6_n, K.reach6_base), K.reach12 != null ? pct(K.reach12) + ' reach 12 months (' + K.reach12_n + ' of ' + K.reach12_base + ')' : '') +
       tile('Lifetime value', money(K.ltv_ended), 'average for clients who left') +
       tile('Cash last 30 days', money(K.cash_30), money(K.cash_year) + ' this year') +
       tile('Overdue', money(K.overdue), '', K.overdue > 0 ? 'bad' : '') +
+      (S.forecast && S.forecast[0] ? tile('Expected next 30 days', money(S.forecast[0].total), 'fees due plus sent invoices') : '') +
       '</section>';
     out += '<div class="two2"><div class="panel"><h2>Cash collected by month</h2><p class="sub">Paid invoices in GoHighLevel. This month so far is lighter.</p>' + bars(S.months, 'cash', money, 'var(--c1)') + '</div>' +
       '<div class="panel"><h2>Monthly clients by month</h2><p class="sub">Clients on a monthly plan at any point in the month, with clients gained and lost.</p>' + bars(S.months, 'active', int, 'var(--c3)') + moves(S.months) + '</div></div>';
+    var F = S.forecast || [];
+    if (S.months[0] && S.months[0].mrr != null) {
+      out += '<div class="two2"><div class="panel"><h2>Recurring revenue over time</h2><p class="sub">What monthly clients were paying at the end of each month, and what moved it. Hover a month for the numbers.</p>' + mrrChart(S.months) + '</div>' +
+        '<div class="panel"><h2>Cash coming in</h2><p class="sub">Monthly fees from active clients on their usual billing day, plus invoices already sent and not paid yet.</p><div class="fcast">' +
+        F.map(function (f) { return '<div class="kpi"><div class="l">Next ' + f.days + ' days</div><div class="v">' + money(f.total) + '</div><div class="ksub">' + money(f.fees) + ' monthly fees + ' + money(f.invoices) + ' sent invoices</div></div>'; }).join('') +
+        '</div><p class="sub legend2">A forecast, not a promise. Overdue invoices are counted as if they get paid.</p></div></div>';
+    }
+    var R = S.reasons || [], SR = S.sources || [], CO = S.cohorts || [];
+    if (R.length || SR.length) {
+      out += '<div class="two2"><div class="panel"><h2>Why clients leave</h2><p class="sub">From the Churn Reason field on former clients in GoHighLevel.</p>' +
+        (R.length ? hbars(R, function (o) { return o.reason; }, function (o) { return o.count; }, function (o) { return o.count + (o.count === 1 ? ' client' : ' clients'); }, 'var(--bad)') : '<p class="msg small">No former monthly clients yet.</p>') + '</div>' +
+        '<div class="panel"><h2>Best client sources</h2><p class="sub">Where clients came from (the Source on their GoHighLevel contact), with average lifetime cash and time as a client.</p>' +
+        (SR.length ? '<div class="tw"><table class="t"><thead><tr><th><button>Source</button></th><th class="n"><button>Clients</button></th><th class="n"><button>Active</button></th><th class="n"><button>Avg lifetime cash</button></th><th class="n"><button>Avg months</button></th></tr></thead><tbody>' +
+          SR.map(function (o) { return '<tr><td class="nm"><b>' + esc(o.source) + '</b></td><td class="n">' + int(o.clients) + '</td><td class="n">' + int(o.active) + '</td><td class="n">' + money(o.ltv) + '</td><td class="n">' + mo(o.avg_months) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="msg small">No clients yet.</p>') + '</div></div>';
+    }
+    if (CO.length) {
+      var sc = function (v, n) { return v == null ? '<span class="mut">too soon</span>' : pct(v) + ' <small class="mut">(' + Math.round(v * n) + ' of ' + n + ')</small>'; };
+      out += '<div class="panel"><h2>Retention by start quarter</h2><p class="sub">Monthly clients grouped by the quarter they started. "Too soon" means nobody in that group has been with us that long yet.</p><div class="tw"><table class="t"><thead><tr><th><button>Started</button></th><th class="n"><button>Clients</button></th><th class="n"><button>Still active</button></th><th class="n"><button>Stayed 3 months</button></th><th class="n"><button>Stayed 6 months</button></th><th class="n"><button>Stayed 12 months</button></th><th class="n"><button>Avg months</button></th></tr></thead><tbody>' +
+        CO.slice().reverse().map(function (o) { return '<tr><td class="nm"><b>' + esc(o.quarter) + '</b></td><td class="n">' + int(o.started) + '</td><td class="n">' + int(o.active) + '</td><td class="n">' + sc(o.stay3, o.n3) + '</td><td class="n">' + sc(o.stay6, o.n6) + '</td><td class="n">' + sc(o.stay12, o.n12) + '</td><td class="n">' + mo(o.avg_months) + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
+    }
     if (S.billing.length) {
       out += '<div class="panel"><h2>Invoices to look at</h2><p class="sub">Overdue, coming due, and drafts not yet sent.</p><div class="tw"><table class="t"><thead><tr><th><button>Client</button></th><th><button>Invoice</button></th><th class="n"><button>Amount</button></th><th><button>Due</button></th><th><button>Status</button></th></tr></thead><tbody>' +
-        S.billing.map(function (b) { return '<tr><td class="nm"><b>' + esc(b.client) + '</b></td><td>' + esc(b.number ? '#' + b.number : '') + '</td><td class="n">' + money(b.amount) + '</td><td>' + (b.due ? dlab(b.due) : '') + '</td><td><span class="pill ' + (b.kind === 'overdue' ? 'bad' : b.kind === 'upcoming' ? 'warn' : 'early') + '">' + (b.kind === 'overdue' ? 'Overdue' : b.kind === 'upcoming' ? 'Coming due' : 'Draft') + '</span></td></tr>'; }).join('') + '</tbody></table></div></div>';
+        slice('bill', S.billing).map(function (b) { return '<tr><td class="nm"><b>' + esc(b.client) + '</b></td><td>' + esc(b.number ? '#' + b.number : '') + '</td><td class="n">' + money(b.amount) + '</td><td>' + (b.due ? dlab(b.due) : '') + '</td><td><span class="pill ' + (b.kind === 'overdue' ? 'bad' : b.kind === 'upcoming' ? 'warn' : 'early') + '">' + (b.kind === 'overdue' ? 'Overdue' : b.kind === 'upcoming' ? 'Coming due' : 'Draft') + '</span></td></tr>'; }).join('') + '</tbody></table></div>' + pager('bill', S.billing.length) + '</div>';
     }
     out += '<div class="panel"><div class="ph2"><h2>Clients</h2><div class="seg" role="group" aria-label="Which clients">' + [['active', 'Active'], ['former', 'Former'], ['all', 'All']].map(function (o) { return '<button type="button" data-f="' + o[0] + '" class="' + (FILT === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div></div>' + clientTable() + '</div>';
     if (S.quality.warnings.length) out += '<div class="panel"><h2>To make these numbers exact</h2><ul class="qlist">' + S.quality.warnings.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></div>';
     $('main').innerHTML = out;
   }
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-f],[data-sort]'); if (!t || !SNAP) return;
-    if (t.dataset.f) { FILT = t.dataset.f; return draw(); }
-    if (t.dataset.sort) { var k = t.dataset.sort; SORT = SORT[0] === k ? [k, -SORT[1]] : [k, k === 'name' || k === 'reason' ? 1 : -1]; return draw(); }
+    var t = e.target.closest('[data-f],[data-sort],[data-ps],[data-pg]'); if (!t || !SNAP) return;
+    if (t.dataset.ps) { var a = t.dataset.ps.split(':'); PS[a[0]] = +a[1]; PG[a[0]] = 0; return draw(); }
+    if (t.dataset.pg) { var b2 = t.dataset.pg.split(':'); PG[b2[0]] = Math.max(0, PG[b2[0]] + (+b2[1])); return draw(); }
+    if (t.dataset.f) { FILT = t.dataset.f; PG.cli = 0; return draw(); }
+    if (t.dataset.sort) { var k = t.dataset.sort; SORT = SORT[0] === k ? [k, -SORT[1]] : [k, k === 'name' || k === 'reason' || k === 'source' ? 1 : -1]; return draw(); }
   });
   load();
 })();

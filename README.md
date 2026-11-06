@@ -121,6 +121,8 @@ Add one more setting in Netlify (Site configuration, Environment variables): `AD
 
 - **`/business`**: the Business page, from GoHighLevel. Active clients, monthly recurring revenue, new and lost clients, churn, how long clients stay, lifetime value, cash by month, invoices to look at, and every client with start date, months, monthly fee and lifetime cash. Admin password only.
 
+- **`/profile?c=THEIR-KEY`**: one client on one page for the team: ad results against goals, last 7 days against the week before, alerts, client health, billing and tenure from GoHighLevel, top videos, campaigns, internal notes, and buttons for the report, Google Ads, GoHighLevel, the Drive folder and Meta. Open it from **Profile** on a client card, from the Business page, or from the client in /admin.
+
 These pages ask for the password once per browser.
 
 ### Connecting GoHighLevel (Business page)
@@ -131,7 +133,8 @@ These pages ask for the password once per browser.
    - **Client Start Date** (date), **Client End Date** (date), **Monthly Retainer** (number), and optionally **Churn Reason** (dropdown).
    The page finds them by name. Until they exist, start and end dates are estimated from first and last payments and marked with ~.
 4. Keep the **client** tag on active clients only. Remove it (and set Client End Date) when a client leaves.
-5. Fill **Google Ads Account ID** on each client contact to link their name to their ad report.
+5. Fill **Google Ads Account ID** on each client contact to link their name to their ad report, or pick the contact under **GoHighLevel and links** in /admin (that link wins if both are set).
+6. The contact's **Source** in GoHighLevel feeds **Best client sources** on the Business page, and **Churn Reason** feeds **Why clients leave**.
 
 The Business numbers refresh with the daily 10 am job, or press **Refresh from GoHighLevel** on the page.
 
@@ -247,6 +250,15 @@ After a deploy, Netlify also builds `dist/ghl-embed.html`. It is the same report
 
 ## Version notes
 
+- **2.4**:
+  - Business: recurring revenue over the last 12 months with new, lost and fee changes; cash coming in over the next 30, 60 and 90 days; why clients leave; best client sources; retention by start quarter; churn shown with counts, for example 44% (4 of 9).
+  - Creative Hub: watch curve at 25, 50, 75 and 100% in the video popup; a Show filter for new this week, running, paused and underfunded winners; running or paused and live since on every video; an Underfunded winners box.
+  - All clients: alerts at the top (spend stopped, no results for 3 or more days, spending 20% or more over budget, a big drop week over week); client health (green, amber, red) with an At risk filter; last 7 days against the week before on every card and in the table; a totals row.
+  - Clients and goals: link each client to their GoHighLevel contact (fills the name and Google Ads ID), Meta ad account, Drive folder and internal notes; Copy embed code next to the client link.
+  - New client profile page. Client report: "This period in plain words" at the top of the Overview.
+  - One extra small Google Ads query per client per refresh (which days each video ran). Saved reports from 2.3 are rebuilt by the next 10 am refresh, or press Load now on the All clients page.
+
+- **2.3**: Business page uses the same 14px spacing as the other pages; Invoices to look at and Clients start at 5 rows with a 5 / 10 / 20 per page choice.
 - **2.2**: Business page (`/business`) from GoHighLevel, added as a fourth tab on the team pages.
 - **2.1**: client report dates sit top right again, with the campaign filters in the bar below the title; every table on Ads & Creative starts at 5 rows with a 5 / 10 / 20 per page choice; Creative Hub leaderboard text stays inside its boxes, dates (now with Custom) on the right, and the campaign switch moved into the filters; in admin the picked conversions fold into one summary line.
 - **2.0**: tabs across the team pages (All clients, Creative Hub, Clients and goals); client report has a single filter bar under the title, 4 or 5 headline numbers with "Show more numbers", an Ads & Creative tab (Videos and Ads together), softer status labels, no projection, no hour chart, and Insights trimmed to Wins, our next step and 3 key insights; keywords and raw search terms only show with `?team=1` on the report link; campaigns are clearly clickable; loading bar with status; saved reports show instantly and refresh in the background; team page groups "Set up goals" and "No data yet", flags missing setup, says why a client is off track, equal-size cards with details in a popup; Creative Hub hides videos under 500 impressions by default; admin has goal templates and picks conversions from the account's real list.
@@ -283,4 +295,4 @@ After a deploy, Netlify also builds `dist/ghl-embed.html`. It is the same report
 - `npm install`, then `node scripts/build.mjs` and `node scripts/dev.mjs` for a local preview at http://localhost:8888/?k=demo
 - `npm test` runs the backend tests (the Google Ads calls are mocked).
 - Page source is in `src/` (`core.js` data model, `insights.js` findings and actions, `charts.js`, `views.js`, `app.js`). `scripts/build.mjs` stitches it into `dist/index.html` and `dist/ghl-embed.html`.
-- Google Ads queries live in `netlify/lib/ads.mjs`.
+- Google Ads queries live in `netlify/lib/ads.mjs`. Team page logic: `netlify/lib/team.mjs` (goal checks, alerts, health), `netlify/lib/videos.mjs` (Creative Hub rows), `netlify/lib/ghl.mjs` (Business numbers).

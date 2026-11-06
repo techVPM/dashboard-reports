@@ -58,6 +58,9 @@ export function summarize(client, rawPayload, savedAt, scopeIn = 'default') {
       c.spend += d.spend; c.res += d[rk] || 0; byCamp.set(d.campaign_id, c);
     }
   }
+  const to = meta.range?.to;
+  const wk = weekOverWeek(payload.daily || [], to, rk);
+  const alerts = alertsFor(payload.daily || [], to, rk, goals, typeOf, cur, wk);
   const cpa = cur.res ? cur.spend / cur.res : null, pcpa = prev.res ? prev.spend / prev.res : null;
   const checks = [];
   if (goals.cost_per_conversion) {
@@ -90,6 +93,7 @@ export function summarize(client, rawPayload, savedAt, scopeIn = 'default') {
     spend: r2(cur.spend), results: r2(cur.res), cpa: cpa == null ? null : r2(cpa),
     prev: { spend: r2(prev.spend), results: r2(prev.res), cpa: pcpa == null ? null : r2(pcpa) },
     by_type: Object.fromEntries(Object.entries(byType).map(([k, v]) => [TYPE_LBL[k] || k, r2(v)])),
+    wow: wk, alerts,
     checks, overall, reason: reasonFor(checks), flags: setupFlags(client, goals, missing), goal_note: goals.note, actions, missing_conversions: missing, campaigns: camps.slice(0, 12),
     has_goals: goals.any,
     warnings: meta.warnings || [],
@@ -123,4 +127,98 @@ export function reasonFor(checks) {
   const pctOff = c.goal ? Math.round(Math.abs(c.actual - c.goal) / c.goal * 100) : 0;
   const dir = c.actual > c.goal ? 'over' : 'under';
   return c.label + ' ' + fmtV(c.actual, c.unit) + ' vs ' + (c.low ? fmtV(c.low, c.unit) + ' to ' : '') + fmtV(c.goal, c.unit) + ' goal (' + pctOff + '% ' + dir + ')';
+}
+
+/* ---------- 2.4: week over week, alerts, health ---------- */
+const addD = (d, n) => { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+const chg = (a, b) => (b ? r2((a - b) / b) : null);
+
+// Last 7 days against the 7 before, from the daily rows (the saved report keeps the previous period too).
+export function weekOverWeek(daily, to, rk) {
+  if (!to) return null;
+  const a = addD(to, -6), b = addD(to, -13), cur = { spend: 0, res: 0 }, prev = { spend: 0, res: 0 };
+  let seenPrev = false;
+  for (const d of daily) {
+    if (d.date > to || d.date < b) continue;
+    const t = d.date >= a ? cur : prev; if (t === prev) seenPrev = true;
+    t.spend += d.spend || 0; t.res += d[rk] || 0;
+  }
+  if (!seenPrev) return null;
+  const cpa = cur.res ? cur.spend / cur.res : null, pcpa = prev.res ? prev.spend / prev.res : null;
+  return {
+    spend: r2(cur.spend), results: r2(cur.res), cpa: cpa == null ? null : r2(cpa),
+    prev: { spend: r2(prev.spend), results: r2(prev.res), cpa: pcpa == null ? null : r2(pcpa) },
+    change: { spend: chg(cur.spend, prev.spend), results: chg(cur.res, prev.res), cpa: cpa != null && pcpa ? chg(cpa, pcpa) : null },
+  };
+}
+
+// Things that need a look today. level: 'bad' or 'warn'.
+export function alertsFor(daily, to, rk, goals, typeOf, cur, wk) {
+  if (!to) return [];
+  const byDay = new Map();
+  const typeByDay = new Map();
+  for (const d of daily) {
+    if (d.date > to) continue;
+    const o = byDay.get(d.date) || { spend: 0, res: 0 }; o.spend += d.spend || 0; o.res += d[rk] || 0; byDay.set(d.date, o);
+    const ty = typeOf.get(d.campaign_id) || 'other';
+    if (d.date > addD(to, -7)) typeByDay.set(ty, (typeByDay.get(ty) || 0) + (d.spend || 0));
+  }
+  const day = (n) => byDay.get(addD(to, -n)) || { spend: 0, res: 0 };
+  const out = [];
+  let before = 0; for (let n = 2; n < 9; n++) before += day(n).spend;
+  if (day(0).spend + day(1).spend < 1 && before >= 50) out.push({ kind: 'stopped', level: 'bad', text: 'Spend stopped: $0 in the last 2 days' });
+  // days in a row with spend but no results, counting back from the last day
+  if (cur.res > 0) {
+    let n = 0, sp = 0; while (n < 30 && day(n).res === 0 && day(n).spend > 0) { sp += day(n).spend; n++; }
+    if (n >= 3) out.push({ kind: 'noresults', level: n >= 5 ? 'bad' : 'warn', text: 'No results for ' + n + ' days ($' + Math.round(sp).toLocaleString('en-US') + ' spent)' });
+  }
+  // spend pace over the last 7 days against the monthly budget
+  const pace = (spend7) => spend7 * 30 / 7;
+  if (goals.monthly_spend) {
+    let s7 = 0; for (let n = 0; n < 7; n++) s7 += day(n).spend;
+    const p = pace(s7);
+    if (p >= goals.monthly_spend * 1.2) out.push({ kind: 'overspend', level: 'bad', text: 'Spending ' + Math.round((p / goals.monthly_spend - 1) * 100) + '% over budget this week' });
+  }
+  for (const sbt of goals.spend_by_type || []) {
+    const s7 = sbt.types.reduce((a, t) => a + (typeByDay.get(t) || 0), 0), p = pace(s7);
+    if (sbt.amount && p >= sbt.amount * 1.2) out.push({ kind: 'overspend', level: 'bad', text: sbt.types.map((t) => TYPE_LBL[t]).join(' + ') + ' spending ' + Math.round((p / sbt.amount - 1) * 100) + '% over budget this week' });
+  }
+  if (wk && !out.some((a) => a.kind === 'stopped' || a.kind === 'noresults')) {
+    if (wk.prev.results >= 5 && wk.change.results != null && wk.change.results <= -0.4) out.push({ kind: 'drop', level: 'warn', text: 'Results down ' + Math.round(-wk.change.results * 100) + '% vs the week before' });
+    else if (wk.prev.spend >= 100 && wk.change.spend != null && wk.change.spend <= -0.5) out.push({ kind: 'drop', level: 'warn', text: 'Spend down ' + Math.round(-wk.change.spend * 100) + '% vs the week before' });
+  }
+  return out;
+}
+
+// Client health: ad results vs goal, spend pacing, overdue invoices and tenure. green / amber / red.
+export function healthFor(row, biz) {
+  const why = []; let pts = 0;
+  // results goals (cost, volume, return) and budget goals are scored separately, so one problem is not counted twice
+  const checks = row.checks || [];
+  const res = checks.filter((c) => !/^spend/.test(c.key)), spend = checks.filter((c) => /^spend/.test(c.key));
+  if (res.some((c) => c.status === 'bad')) { pts += 2; why.push('Results off goal'); } else if (res.some((c) => c.status === 'warn')) { pts += 1; why.push('Results near goal'); }
+  const spendBad = spend.some((c) => c.status === 'bad');
+  if (spendBad) { pts += 2; why.push('Spend off budget'); }
+  const al = (row.alerts || []).filter((a) => a.level === 'bad' && !(spendBad && a.kind === 'overspend'));
+  if (al.length) { pts += 1; why.push(al[0].text); }
+  if (biz) {
+    if (biz.overdue > 0) { pts += 2; why.push('Overdue invoice $' + Math.round(biz.overdue).toLocaleString('en-US')); }
+    if (biz.months != null && biz.months < 3) { pts += 1; why.push('New client (' + (biz.months < 1 ? 'under 1 month' : Math.floor(biz.months) + ' months') + ')'); }
+  }
+  const level = pts >= 4 ? 'red' : pts >= 2 ? 'amber' : 'green';
+  return { level, points: pts, why, linked: !!biz };
+}
+
+// Business snapshot rows keyed by report token, with overdue amounts from the billing list.
+export function bizByToken(snap, clients = []) {
+  const out = new Map();
+  if (!snap) return out;
+  const overdue = new Map();
+  for (const b of snap.billing || []) if (b.kind === 'overdue' && b.contact_id) overdue.set(b.contact_id, (overdue.get(b.contact_id) || 0) + (b.amount || 0));
+  const slim = (r) => ({ id: r.id, months: r.months, start: r.start, retainer: r.retainer, cash: r.cash, overdue: overdue.get(r.id) || 0, source: r.source, active: r.active });
+  for (const r of snap.clients || []) if (r.token && (r.active || !out.has(r.token))) out.set(r.token, slim(r));
+  // a contact picked in admin counts right away, before the next Business refresh
+  const byId = new Map((snap.clients || []).map((r) => [r.id, r]));
+  for (const c of clients) if (c.ghl_contact_id && byId.has(c.ghl_contact_id)) out.set(c.token, slim(byId.get(c.ghl_contact_id)));
+  return out;
 }

@@ -7,6 +7,20 @@ import { getClientsWithSource, saveClients, RESERVED } from '../lib/store.mjs';
 import { cleanGoals } from '../lib/goals.mjs';
 import { isAdmin, jsonRes } from '../lib/auth.mjs';
 import { runQuery, digits } from '../lib/ads.mjs';
+import { savedBusiness, refreshBusiness } from '../lib/business.mjs';
+import { DEFAULT_LOCATION } from '../lib/ghl.mjs';
+
+// GoHighLevel contacts for the admin picker, from the saved Business snapshot (refreshed daily).
+export async function ghlContacts() {
+  let hit = await savedBusiness().catch(() => null);
+  if (!hit && process.env.VPM_DEV) hit = { snap: await refreshBusiness(), saved_at: Date.now() };
+  if (!hit || !hit.snap) {
+    throw Object.assign(new Error(process.env.GHL_TOKEN ? 'GoHighLevel has not been read yet. Open the Business page once, then come back here.' : 'GoHighLevel is not connected yet (GHL_TOKEN in Netlify).'), { status: 503 });
+  }
+  const contacts = (hit.snap.clients || []).map((r) => ({ id: r.id, name: r.name, contact: r.contact, ads: r.ads || '', start: r.start, start_est: r.start_est, retainer: r.retainer, active: r.active, monthly: r.monthly, token: r.token || null }))
+    .sort((a, b) => (b.active - a.active) || a.name.localeCompare(b.name));
+  return { contacts, saved_at: hit.saved_at || null, location: process.env.GHL_LOCATION_ID || DEFAULT_LOCATION };
+}
 
 // Every conversion action in a Google Ads account, with how many it counted in the last 30 days,
 // so the admin page can offer them as tick boxes instead of typing names.
@@ -41,6 +55,17 @@ export function validate(c, list, original) {
   if (!TOKEN.test(c.token) || c.token.length < 4) errs.push('The link key can only use lowercase letters, numbers and dashes.');
   if (RESERVED.includes(c.token)) errs.push('That link key is reserved. Pick another.');
   if (list.some((x) => x.token === c.token && x.token !== original)) errs.push('Another client already uses the link key ' + c.token + '.');
+  // 2.4 links: GoHighLevel contact, Meta ad account, Drive folder, internal notes (team only, never on the report)
+  for (const k of ['ghl_contact_id', 'meta_ad_account', 'drive_url', 'internal_notes']) { if (c[k] == null || String(c[k]).trim() === '') delete c[k]; else c[k] = String(c[k]).trim(); }
+  if (c.ghl_contact_id && !/^[A-Za-z0-9_-]{1,60}$/.test(c.ghl_contact_id)) errs.push('That GoHighLevel contact id does not look right.');
+  if (c.meta_ad_account) {
+    const m = c.meta_ad_account.replace(/^act_/i, '').replace(/\D/g, '');
+    if (m.length < 5 || m.length > 20) errs.push('The Meta ad account ID should be the number from Ads Manager, like act_1234567890.');
+    else c.meta_ad_account = 'act_' + m;
+  }
+  if (c.drive_url && !/^https:\/\/[^\s]+$/.test(c.drive_url)) errs.push('The Drive folder link should start with https://');
+  if (c.internal_notes && c.internal_notes.length > 5000) errs.push('Internal notes are too long (5,000 characters at most).');
+  if (c.ghl_contact_id && list.some((x) => x.ghl_contact_id === c.ghl_contact_id && x.token !== original)) errs.push('That GoHighLevel contact is already linked to ' + list.find((x) => x.ghl_contact_id === c.ghl_contact_id).name + '.');
   if (c.goals) {
     const g = cleanGoals(c.goals);
     if (c.goals.cost_per_conversion && !g.cost_per_conversion) errs.push('Target cost per conversion should be a number like 250 or a range like 200-300.');
@@ -66,6 +91,10 @@ export default async (req) => {
     if (process.env.VPM_DEV) return jsonRes({ conversions: [{ name: 'Booked Call', category: 'book appointment', primary: true, count30: 46 }, { name: 'Submit lead form', category: 'submit lead form', primary: false, count30: 56 }, { name: 'Local actions - Directions', category: 'get directions', primary: true, count30: 2 }, { name: 'YouTube follow-on views', category: 'default', primary: false, count30: 1 }] });
     try { return jsonRes({ conversions: await listConversions(id) }); }
     catch (e) { return jsonRes({ error: 'Could not read conversions from Google Ads: ' + e.message }, 502); }
+  }
+  if (req.method === 'GET' && url.searchParams.get('ghl')) {
+    try { return jsonRes(await ghlContacts()); }
+    catch (e) { return jsonRes({ error: e.message, contacts: [] }, e.status === 503 ? 503 : 502); }
   }
   const { clients, source, saved_at } = await getClientsWithSource();
   if (req.method === 'GET') return jsonRes({ clients, source, saved_at: saved_at || null });

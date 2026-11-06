@@ -42,7 +42,7 @@ ${script('')}
 writeFileSync(join(root, 'dist', 'index.html'), page);
 // Clean client links such as /coach-by-chris-1613. Two safety nets besides the rule in netlify.toml:
 // a _redirects rule, and a 404.html that is the same report page (Netlify shows it for any unknown address).
-writeFileSync(join(root, 'dist', '_redirects'), '/team  /team.html  200\n/admin  /admin.html  200\n/creative  /creative.html  200\n/business  /business.html  200\n/:slug  /index.html  200\n');
+writeFileSync(join(root, 'dist', '_redirects'), '/team  /team.html  200\n/admin  /admin.html  200\n/creative  /creative.html  200\n/business  /business.html  200\n/profile  /profile.html  200\n/:slug  /index.html  200\n');
 
 // Team pages: the all-clients dashboard (/team) and the clients and goals editor (/admin).
 const teamCss = rd('team.css');
@@ -55,7 +55,7 @@ const TABS = [
 ];
 const tabs = (on) => '<nav class="itabs" aria-label="Team pages">' + TABS.map(([k, h, l, sh, ic]) => `<a class="itab${k === on ? ' on' : ''}" href="${h}"${k === on ? ' aria-current="page"' : ''}><svg viewBox="0 0 20 20" aria-hidden="true">${ic}</svg><span class="lt">${l}</span><span class="st">${sh}</span></a>`).join('') + '</nav>';
 const teamPage = (file) => rd(file).replace(/<!--TABS:(\w+)-->/, (_, k) => tabs(k));
-for (const [file, title] of [['team.html', 'All Clients | VPM'], ['admin.html', 'Clients and Goals | VPM'], ['creative.html', 'Creative Hub | VPM'], ['business.html', 'Business | VPM']]) {
+for (const [file, title] of [['team.html', 'All Clients | VPM'], ['admin.html', 'Clients and Goals | VPM'], ['creative.html', 'Creative Hub | VPM'], ['business.html', 'Business | VPM'], ['profile.html', 'Client Profile | VPM']]) {
   writeFileSync(join(root, 'dist', file), `<!doctype html>
 <html lang="en">
 <head>

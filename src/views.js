@@ -257,10 +257,32 @@ function goalsPanel(A) {
   var body = (cards.length ? '<div class="goals">' + cards.join('') + '</div>' : '') + (G.note ? '<p class="note">' + esc(G.note) + '</p>' : '');
   return body ? panel('Goals', sub, body) : '';
 }
+// "This period in plain words": two or three sentences a busy owner can read in ten seconds.
+function plainWords(A, L) {
+  var cur = A.cur, pri = A.pri, lab = esc(rlab().toLowerCase()), one = esc(sing(rlab())), res = cur[RK] || 0, pres = pri[RK] || 0;
+  if (!cur.spend) return '';
+  var days = N + ' day' + (N === 1 ? '' : 's'), out = [];
+  var cost = res ? cur.spend / res : null, pcost = pres ? pri.spend / pres : null;
+  out.push(res ? 'Over these ' + days + ' we invested ' + money(cur.spend) + ' in ads and brought in ' + int(res) + ' ' + (res === 1 ? one : lab) + ', about ' + money2(cost) + ' each.'
+    : 'Over these ' + days + ' we invested ' + money(cur.spend) + ' in ads. No ' + lab + ' were recorded yet in this range.');
+  if (pri.spend > 0 && res && pres) {
+    var d = res - pres, cp = pcost ? (cost - pcost) / pcost : 0;
+    out.push('That is ' + (d === 0 ? 'the same number of ' + lab : int(Math.abs(d)) + ' ' + (d > 0 ? 'more' : 'fewer') + ' ' + (Math.abs(d) === 1 ? one : lab)) + ' than the ' + prevLabel() +
+      (Math.abs(cp) < 0.03 ? ', at about the same cost each.' : ', and each one cost ' + Math.round(Math.abs(cp) * 100) + '% ' + (cp < 0 ? 'less' : 'more') + '.'));
+  }
+  var G = META.goals || {};
+  if (HAS.rev && cur.rev) out.push('Every $1 in ads came back as ' + money2(cur.rev / cur.spend) + ' in revenue' + (G.roas ? ', against a goal of ' + money2(G.roas) + '.' : '.'));
+  else if (G.cost_per_conversion && cost != null) out.push(cost <= G.cost_per_conversion ? 'That is within your goal of ' + money2(G.cost_per_conversion) + ' or less per ' + one + '.' : 'That is above your goal of ' + money2(G.cost_per_conversion) + ' per ' + one + ', and getting it back under is our focus.');
+  else if (res && L.length > 1) {
+    var best = L.slice().sort(function (a, b) { return (b.cur[RK] || 0) - (a.cur[RK] || 0); })[0];
+    if (best && best.cur[RK]) out.push('Most of them came from ' + esc(best.name) + ' (' + int(best.cur[RK]) + ').');
+  }
+  return '<div class="panel plain"><p class="plh">This period in plain words</p><p class="plt">' + out.slice(0, 3).join(' ') + '</p></div>';
+}
 function vOverview() {
   var L = list(), A = agg(L); charts = [{ id: 'o', A: A }];
   var D = computeInsights();
-  return kpiBlock(A) + goalsPanel(A) +
+  return plainWords(A, L) + kpiBlock(A) + goalsPanel(A) +
     chartCard('o', 'Spend and results over time', 'Daily trend for the selected range.', A) +
     panel('Key insights', 'The short version. <a href="#insights" class="lnk" data-go="insights">See wins and our next step</a>', '<div class="inslist">' + D.insights.slice(0, 3).map(insightCard).join('') + '</div>') +
     '<div class="two">' + splitPanel(L) + actionsPanel(1) + '</div>';

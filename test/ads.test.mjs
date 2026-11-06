@@ -397,3 +397,121 @@ test('GoHighLevel requests use the private key, version header and paging', asyn
   assert.ok(seen.some((s) => s[0] === 'POST' && s[1] === '/contacts/search'));
   await assert.rejects(fetchAll({ env: {}, fetchFn: f }), /GHL_TOKEN/);
 });
+
+/* ---------------- 2.4 ---------------- */
+import { weekOverWeek, alertsFor, healthFor, bizByToken, summarize as summarize24 } from '../netlify/lib/team.mjs';
+import { videoRows as videoRows24 } from '../netlify/lib/videos.mjs';
+import { computeBusiness as computeBusiness24 } from '../netlify/lib/ghl.mjs';
+import { demoBusiness as demoBusiness24 } from '../netlify/lib/demo-business.mjs';
+import { validate as validate24 } from '../netlify/functions/admin.mjs';
+
+const dayRows = (to, n, f) => Array.from({ length: n }, (_, i) => { const d = new Date(to + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - i); return { date: d.toISOString().slice(0, 10), campaign_id: '1', ...f(i) }; });
+
+test('week over week compares the last 7 days with the 7 before', () => {
+  const daily = dayRows('2026-11-05', 14, (i) => ({ spend: 100, leads: i < 7 ? 1 : 2 }));
+  const w = weekOverWeek(daily, '2026-11-05', 'leads');
+  assert.equal(w.results, 7); assert.equal(w.prev.results, 14); assert.equal(w.change.results, -0.5);
+  assert.equal(w.change.spend, 0);
+  assert.equal(weekOverWeek(daily.slice(0, 7), '2026-11-05', 'leads'), null, 'no week before, no comparison');
+});
+
+test('alerts: spend stopped, no results for days, over budget, and a big drop', () => {
+  const typeOf = new Map([['1', 'video']]);
+  const goals = { monthly_spend: 1000, spend_by_type: [] };
+  let daily = dayRows('2026-11-05', 14, (i) => ({ spend: i < 2 ? 0 : 100, leads: 2 }));
+  let a = alertsFor(daily, '2026-11-05', 'leads', goals, typeOf, { res: 20 }, weekOverWeek(daily, '2026-11-05', 'leads'));
+  assert.ok(a.some((x) => x.kind === 'stopped'));
+  assert.ok(!a.some((x) => x.kind === 'drop'), 'a stop is not also reported as a drop');
+  daily = dayRows('2026-11-05', 14, (i) => ({ spend: 100, leads: i < 4 ? 0 : 2 }));
+  a = alertsFor(daily, '2026-11-05', 'leads', goals, typeOf, { res: 20 }, weekOverWeek(daily, '2026-11-05', 'leads'));
+  const nr = a.find((x) => x.kind === 'noresults');
+  assert.ok(nr && /4 days/.test(nr.text));
+  assert.ok(a.some((x) => x.kind === 'overspend'), '$100 a day is 3x a $1,000 budget');
+  daily = dayRows('2026-11-05', 14, () => ({ spend: 20, leads: 1 }));
+  assert.deepEqual(alertsFor(daily, '2026-11-05', 'leads', goals, typeOf, { res: 14 }, weekOverWeek(daily, '2026-11-05', 'leads')), []);
+});
+
+test('client health adds up results, spend, overdue invoices and tenure', () => {
+  const cpa = (status) => [{ key: 'cpa', status }];
+  assert.equal(healthFor({ overall: 'good', checks: cpa('good'), alerts: [] }, { overdue: 0, months: 12 }).level, 'green');
+  assert.equal(healthFor({ overall: 'warn', checks: cpa('warn'), alerts: [] }, { overdue: 0, months: 1 }).level, 'amber');
+  const overOnly = healthFor({ overall: 'bad', checks: [{ key: 'spend', status: 'bad' }], alerts: [{ kind: 'overspend', level: 'bad', text: 'x' }] }, { overdue: 0, months: 12 });
+  assert.equal(overOnly.level, 'amber', 'spending off budget alone counts once: keep an eye');
+  const red = healthFor({ overall: 'bad', checks: cpa('bad'), alerts: [] }, { overdue: 500, months: 12 });
+  assert.equal(red.level, 'red'); assert.ok(red.why.some((w) => /Overdue/.test(w)));
+  assert.equal(healthFor({ overall: 'good', checks: [], alerts: [] }).linked, false);
+  const m = bizByToken({ clients: [{ id: 'c1', token: 'acme-1234', active: true, months: 3 }], billing: [{ contact_id: 'c1', kind: 'overdue', amount: 250 }] });
+  assert.equal(m.get('acme-1234').overdue, 250);
+});
+
+test('team row carries week over week and alerts', () => {
+  const p = demoReport('demo-calls', '2026-10-07', '2026-11-05');
+  const r = summarize24({ token: 't', name: 'T', customer_id: '1', goals: {} }, p, Date.now());
+  assert.ok(r.wow && r.wow.prev.spend > 0);
+  assert.ok(r.alerts.some((a) => a.kind === 'noresults'), 'the calls sample goes quiet for 3 days');
+});
+
+test('creative rows: watch curve, running or paused, new, and share of campaign spend', () => {
+  const p = demoReport('demo', '2026-10-07', '2026-11-05');
+  const rows = videoRows24({ name: 'X', token: 'x', goals: {} }, p);
+  assert.ok(rows.every((v) => v.first_day <= v.last_day), 'first day is never after the last day');
+  assert.ok(rows.some((v) => v.running === false) && rows.some((v) => v.running === true));
+  assert.ok(rows.some((v) => v.is_new));
+  assert.ok(rows.every((v) => v.p75 == null || (v.p75 <= v.p50 && v.p75 >= v.p100)));
+  assert.ok(rows.every((v) => v.spend_share == null || (v.spend_share > 0 && v.spend_share <= 1)));
+  assert.ok(rows.some((v) => v.spend_share < 0.1 && v.results >= 2), 'the sample has an underfunded winner');
+});
+
+test('business: recurring revenue history, forecast, churn reasons, sources and start quarters', () => {
+  const now = Date.parse('2026-11-06T12:00:00Z');
+  const b = computeBusiness24({ ...demoBusiness24(now), now });
+  const last = b.months[b.months.length - 1];
+  assert.equal(last.mrr, b.kpis.mrr, 'this month ends at today\'s recurring revenue');
+  for (let i = 1; i < b.months.length; i++) {
+    const m = b.months[i], prev = b.months[i - 1];
+    assert.ok(Math.abs(prev.mrr + m.mrr_new - m.mrr_lost + m.mrr_changed - m.mrr) < 0.01, 'moves add up for ' + m.month);
+  }
+  assert.ok(b.months.some((m) => m.mrr_changed > 0), 'a fee change in the sample shows up');
+  assert.deepEqual(b.forecast.map((f) => f.days), [30, 60, 90]);
+  assert.ok(b.forecast[0].total <= b.forecast[1].total && b.forecast[1].total <= b.forecast[2].total);
+  assert.equal(b.reasons.reduce((s, r) => s + r.count, 0), b.clients.filter((c) => c.monthly && !c.active).length);
+  assert.equal(b.sources.reduce((s, r) => s + r.clients, 0), b.clients.length);
+  assert.ok(b.cohorts.length > 0 && b.cohorts.every((c) => c.stay3 == null || (c.stay3 >= 0 && c.stay3 <= 1)));
+  assert.equal(typeof b.kpis.churn_lost_6m, 'number');
+  assert.ok(b.billing.every((x) => 'contact_id' in x));
+});
+
+test('business links clients to reports by GoHighLevel contact first, then Google Ads ID', () => {
+  const now = Date.parse('2026-11-06T12:00:00Z');
+  const data = demoBusiness24(now);
+  const target = data.contacts.find((c) => c.tags.includes('client'));
+  const b = computeBusiness24({ ...data, now, reportClients: [{ token: 'linked-0001', customer_id: '111-222-3333', ghl_contact_id: target.id }] });
+  const row = b.clients.find((r) => r.id === target.id);
+  assert.equal(row.token, 'linked-0001'); assert.equal(row.ads, '1112223333');
+});
+
+test('admin keeps Meta, Drive and GoHighLevel links tidy', () => {
+  const base = { name: 'Acme', customer_id: '1234567890' };
+  let c = { ...base, meta_ad_account: '1234567890123', drive_url: 'https://drive.google.com/x', ghl_contact_id: 'abcDEF12345', internal_notes: '  hi  ' };
+  assert.deepEqual(validate24(c, [], null), []);
+  assert.equal(c.meta_ad_account, 'act_1234567890123'); assert.equal(c.internal_notes, 'hi');
+  c = { ...base, meta_ad_account: 'act_12', drive_url: 'drive.google.com' };
+  const errs = validate24(c, [], null);
+  assert.ok(errs.some((e) => /Meta/.test(e)) && errs.some((e) => /Drive/.test(e)));
+  c = { ...base, ghl_contact_id: 'abcDEF12345' };
+  assert.ok(validate24(c, [{ token: 'other-1111', name: 'Other', ghl_contact_id: 'abcDEF12345' }], null).some((e) => /already linked/.test(e)));
+  c = { ...base, meta_ad_account: '' }; validate24(c, [], null); assert.ok(!('meta_ad_account' in c), 'blank links are dropped');
+});
+
+test('a contact picked in admin links right away and beats a Google Ads ID match', () => {
+  const snap = { clients: [{ id: 'old', token: 'acme-1234', active: true, months: 30 }, { id: 'new', token: null, active: true, months: 2 }], billing: [] };
+  assert.equal(bizByToken(snap, [{ token: 'acme-1234', ghl_contact_id: 'new' }]).get('acme-1234').id, 'new');
+  const now = Date.parse('2026-11-06T12:00:00Z');
+  const data = demoBusiness24(now);
+  const [a, b] = data.contacts.filter((c) => c.tags.includes('client'));
+  a.fields.fa = '111-222-3333'; b.fields.fa = '111-222-3333';
+  data.fields.push({ id: 'fa', name: 'Google Ads Account ID (Optional)' });
+  const res = computeBusiness24({ ...data, now, reportClients: [{ token: 'acme-3333', customer_id: '111-222-3333', ghl_contact_id: b.id }] });
+  assert.equal(res.clients.find((r) => r.id === a.id).token, null);
+  assert.equal(res.clients.find((r) => r.id === b.id).token, 'acme-3333');
+});

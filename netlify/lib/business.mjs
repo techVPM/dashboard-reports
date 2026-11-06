@@ -7,7 +7,7 @@ export const BUSINESS_KEY = 'business/latest';
 
 export async function buildBusiness({ env = process.env, fetchFn = fetch, now = Date.now() } = {}) {
   const reportClients = await getClients(env).catch(() => []);
-  if (env.VPM_DEV && !env.GHL_TOKEN) return computeBusiness({ ...demoBusiness(now), now, reportClients });
+  if (env.VPM_DEV && !env.GHL_TOKEN) return computeBusiness({ ...demoBusiness(now, reportClients.filter((c) => !c.disabled)), now, reportClients });
   const data = await fetchAll({ env, fetchFn });
   return computeBusiness({ ...data, now, reportClients });
 }

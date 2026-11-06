@@ -38,7 +38,7 @@
   var TZ = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific'], ['America/Anchorage', 'Alaska'], ['Pacific/Honolulu', 'Hawaii']];
   var TYPES = [['video', 'Video (YouTube and Demand Gen)'], ['search', 'Search'], ['pmax', 'Performance Max'], ['search+pmax', 'Search and Performance Max'], ['shopping', 'Shopping'], ['display', 'Display']];
   var TYPE_SHORT = { video: 'Video', search: 'Search', pmax: 'PMax', 'search+pmax': 'Search and PMax', shopping: 'Shopping', display: 'Display' };
-  var FORM_KEYS = ['name', 'customer_id', 'token', 'timezone', 'default_scope', 'disabled', 'include_paused', 'goals', 'notes', 'last_change_date', 'ads_url'];
+  var FORM_KEYS = ['name', 'customer_id', 'token', 'timezone', 'default_scope', 'disabled', 'include_paused', 'goals', 'notes', 'last_change_date', 'ads_url', 'ghl_contact_id', 'meta_ad_account', 'drive_url', 'internal_notes'];
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function slug(n, id) { return String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '-' + String(id || '').replace(/\D/g, '').slice(-4); }
   function money(v) { return '$' + Math.round(Number(v)).toLocaleString('en-US'); }
@@ -112,7 +112,7 @@
     $('form').innerHTML =
       '<div class="fhead"><div><h2>' + (ORIG ? esc(CUR.name) : 'New client') + '</h2>' + (sm.length ? '<p class="glance">' + sm.map(esc).join(' · ') + '</p>' : '') + '</div>' +
         '<div class="fhbtns">' + (link && !CUR.disabled ? '<a class="obtn" href="' + esc(link) + '" target="_blank" rel="noopener">Open report</a>' : '') + '<label class="activetog"><input type="checkbox" id="f_active"' + (CUR.disabled ? '' : ' checked') + '><span>Active client</span></label></div></div>' +
-      (link ? '<p class="linkline">Client link: <b>' + esc(link) + '</b> <button type="button" class="tlink" data-copy="' + esc(link) + '">Copy</button>' + (CUR.disabled ? ' <span class="pill early">Turned off while inactive</span>' : '') + '</p>' : '') +
+      (link ? '<p class="linkline">Client link: <b>' + esc(link) + '</b> <button type="button" class="tlink" data-copy="' + esc(link) + '">Copy link</button> <button type="button" class="tlink" data-copy="' + esc(embedCode(link, CUR.name)) + '" title="Paste into a Custom HTML or Code element on the client\'s GoHighLevel portal page">Copy embed code</button>' + (ORIG ? ' <a class="tlink" href="/profile?c=' + encodeURIComponent(ORIG) + '">Client profile</a>' : '') + (CUR.disabled ? ' <span class="pill early">Turned off while inactive</span>' : '') + '</p>' : '') +
 
       (ORIG ? '' : '<div class="tpls"><b>Start from a template</b><div class="tplbtns">' + TEMPLATES.map(function (t, i) { return '<button type="button" class="tpl" data-tpl="' + i + '"><b>' + t.name + '</b><small>' + t.sub + '</small></button>'; }).join('') + '</div></div>') +
       section('Client', '', '<div class="fgrid g3">' +
@@ -120,6 +120,13 @@
         f('Google Ads ID', 'f_cid', CUR.customer_id, '', 'text', '123-456-7890') +
         '<label class="fld"><span>Ads account time zone</span><select id="f_tz">' + TZ.map(function (z) { return '<option value="' + z[0] + '"' + ((CUR.timezone || 'America/Denver') === z[0] ? ' selected' : '') + '>' + z[1] + '</option>'; }).join('') + '</select></label>' +
         '<label class="fld wide"><span>Campaigns we manage</span><select id="f_scope"><option value="all"' + (CUR.default_scope === 'vpm' ? '' : ' selected') + '>All campaigns in the account</option><option value="vpm"' + (CUR.default_scope === 'vpm' ? ' selected' : '') + '>Only campaigns with VPM in the name</option></select><small>Sets what the client report, goals and team dashboard show first. Anyone can still switch between VPM, not VPM and all campaigns.</small></label>' +
+      '</div>') +
+
+      section('GoHighLevel and links', 'Link the client to their GoHighLevel contact, and keep their other accounts in one place.', '<div class="fgrid g3">' +
+        '<div class="fld wide"><span>GoHighLevel contact</span><div class="ghlrow"><select id="f_ghl" aria-label="GoHighLevel contact"><option value="' + esc(CUR.ghl_contact_id || '') + '">Loading GoHighLevel contacts</option></select><button type="button" class="obtn" data-ghlfill="1" id="ghlfill" hidden>Fill name and Google Ads ID</button></div><small id="ghlinfo">Links billing, start date and fee to this client for the Business page, health score and client profile.</small></div>' +
+        f('Meta ad account ID', 'f_meta', CUR.meta_ad_account, 'From Meta Ads Manager, like act_1234567890. Meta conversions can be picked once Meta is connected.', 'text', 'act_1234567890') +
+        f('Google Drive folder', 'f_drive', CUR.drive_url, 'Link to the client\'s shared folder', 'url', 'https://drive.google.com/...') +
+        ta('Internal notes', 'x_inotes', CUR.internal_notes, 'Only the team sees these, on the client profile page. Never shown to the client.', 3, 'For example: prefers calls on Tuesdays, renewal talk in March') +
       '</div>') +
 
       section('Goal', 'What a good result looks like for this client.', '<div class="fgrid g3">' +
@@ -158,6 +165,50 @@
       '<div class="savebar"><span class="dirty" id="dirty" hidden>Unsaved changes</span><p class="err" id="ferr" hidden></p><p class="ok" id="fok" hidden></p><span class="sp"></span>' +
         (ORIG ? '<button type="button" class="obtn danger" data-del="1">Delete</button>' : '') + '<button type="submit" class="mbtn">' + (ORIG ? 'Save changes' : 'Add client') + '</button></div>';
     loadConversions();
+    loadGhl();
+  }
+  function embedCode(link, name) { return '<iframe src="' + link + '" title="' + String(name || 'Ad report').replace(/"/g, '') + ' ad report" style="width:100%;min-height:2400px;border:0" loading="lazy"></iframe>'; }
+  /* ---------- GoHighLevel contact picker ---------- */
+  var GHL = { list: null, err: '', busy: false };
+  function fmtAds(d) { d = String(d || '').replace(/\D/g, ''); return d.length === 10 ? d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6) : d; }
+  function dshort(s) { return s ? new Date(s + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : ''; }
+  function loadGhl() {
+    if (GHL.list || GHL.err) return drawGhl();
+    if (GHL.busy) return; GHL.busy = true;
+    api('/api/admin?ghl=1').then(function (j) { GHL.list = j.contacts || []; GHL.location = j.location || ''; }, function (e) { GHL.err = (e && e.message) || 'Could not load GoHighLevel.'; })
+      .then(function () { GHL.busy = false; drawGhl(); });
+  }
+  function ghlById(id) { return (GHL.list || []).filter(function (x) { return x.id === id; })[0] || null; }
+  function drawGhl() {
+    var el = $('f_ghl'); if (!el) return;
+    var cur = CUR.ghl_contact_id || '';
+    if (GHL.err) { el.innerHTML = '<option value="' + esc(cur) + '">' + (cur ? 'Linked (' + esc(cur) + ')' : 'GoHighLevel not available') + '</option>'; el.disabled = !cur; $('ghlinfo').textContent = GHL.err; return; }
+    if (!GHL.list) return;
+    var taken = {}; LIST.forEach(function (c) { if (c.ghl_contact_id && c.token !== ORIG) taken[c.ghl_contact_id] = c.name; });
+    var opt = function (x) { return '<option value="' + esc(x.id) + '"' + (x.id === cur ? ' selected' : '') + (taken[x.id] ? ' disabled' : '') + '>' + esc(x.name) + (x.contact && x.contact !== x.name ? ' (' + esc(x.contact) + ')' : '') + (x.ads ? ' · ' + fmtAds(x.ads) : '') + (taken[x.id] ? ' · linked to ' + esc(taken[x.id]) : '') + '</option>'; };
+    var act = GHL.list.filter(function (x) { return x.active; }), old = GHL.list.filter(function (x) { return !x.active; });
+    el.disabled = false;
+    el.innerHTML = '<option value="">Not linked</option>' + (act.length ? '<optgroup label="Active clients">' + act.map(opt).join('') + '</optgroup>' : '') + (old.length ? '<optgroup label="Former clients">' + old.map(opt).join('') + '</optgroup>' : '') +
+      (cur && !ghlById(cur) ? '<option value="' + esc(cur) + '" selected>Linked contact not found (' + esc(cur) + ')</option>' : '');
+    ghlInfo();
+  }
+  function ghlInfo() {
+    var id = val('f_ghl'), x = ghlById(id), info = $('ghlinfo'), fill = $('ghlfill');
+    if (!info) return;
+    fill.hidden = !x;
+    if (!x) {
+      var cid = (val('f_cid') || '').replace(/\D/g, ''), guess = cid.length === 10 ? (GHL.list || []).filter(function (g) { return g.ads === cid; })[0] : null;
+      info.innerHTML = guess ? 'Looks like <b>' + esc(guess.name) + '</b> in GoHighLevel (same Google Ads ID). <button type="button" class="tlink" data-ghlpick="' + esc(guess.id) + '">Link it</button>' : 'Links billing, start date and fee to this client for the Business page, health score and client profile.';
+      return;
+    }
+    info.innerHTML = [x.active ? 'Active client' : 'Former client', x.start ? 'started ' + dshort(x.start) + (x.start_est ? ' (from first invoice)' : '') : '', x.retainer ? money(x.retainer) + ' a month' : '', x.ads ? 'Google Ads ' + fmtAds(x.ads) : 'no Google Ads ID in GoHighLevel'].filter(Boolean).map(esc).join(' · ') +
+      ' · <a href="https://app.gohighlevel.com/v2/location/' + encodeURIComponent(GHL.location || 'StKSixAuNDCkNJ4snXLn') + '/contacts/detail/' + encodeURIComponent(x.id) + '" target="_blank" rel="noopener">Open in GoHighLevel</a>';
+  }
+  function ghlFill(force) {
+    var x = ghlById(val('f_ghl')); if (!x) return;
+    if (force || !val('f_name')) $('f_name').value = x.name;
+    if (x.ads && (force || !val('f_cid'))) { $('f_cid').value = fmtAds(x.ads); loadConversions(); }
+    setDirty(true);
   }
   /* ---------- conversion picker ---------- */
   function norm(n) { return String(n || '').toLowerCase().replace(/[\u2010-\u2015\u2212]/g, '-').replace(/\s+/g, ' ').trim(); }
@@ -209,7 +260,7 @@
   ];
   function setDirty(v) { DIRTY = v; var d = $('dirty'); if (d) d.hidden = !v; if (v) { var ok = $('fok'); if (ok) ok.hidden = true; } }
   $('form').addEventListener('input', function () { setDirty(true); });
-  $('form').addEventListener('change', function (e) { setDirty(true); if (e.target.id === 'f_cid') loadConversions(); if (e.target.id === 'g_focus' || e.target.id === 'g_sec') drawPicker(); });
+  $('form').addEventListener('change', function (e) { setDirty(true); if (e.target.id === 'f_cid') { loadConversions(); ghlInfo(); } if (e.target.id === 'f_ghl') { ghlFill(false); ghlInfo(); } if (e.target.id === 'g_focus' || e.target.id === 'g_sec') drawPicker(); });
 
   function val(id) { var el = $(id); return el ? el.value.trim() : ''; }
   function numv(id) { var v = val(id).replace(/[$,]/g, ''); return v === '' ? undefined : Number(v); }
@@ -239,6 +290,10 @@
     if (val('x_note')) c.notes = [{ title: 'A note from your VPM team', body: val('x_note') }];
     if (val('x_lcd')) c.last_change_date = val('x_lcd');
     if (val('x_ads')) c.ads_url = val('x_ads');
+    if (val('f_ghl')) c.ghl_contact_id = val('f_ghl');
+    if (val('f_meta')) c.meta_ad_account = val('f_meta');
+    if (val('f_drive')) c.drive_url = val('f_drive');
+    if (val('x_inotes')) c.internal_notes = val('x_inotes');
     return c;
   }
   function msg(id, text) { ['ferr', 'fok'].forEach(function (x) { $(x).hidden = true; }); if (text) { $(id).hidden = false; $(id).textContent = text; } }
@@ -268,7 +323,9 @@
 
   document.addEventListener('click', function (e) {
     var a = e.target.closest('a.tlink, a.itab'); if (a && DIRTY && a.getAttribute('href')) { e.preventDefault(); return guard(function () { DIRTY = false; location.href = a.getAttribute('href'); }); }
-    var t = e.target.closest('[data-pick],[data-new],[data-del],[data-copy],[data-addsplit],[data-rmsplit],[data-ask],[data-cv],[data-tpl]'); if (!t) return;
+    var t = e.target.closest('[data-pick],[data-new],[data-del],[data-copy],[data-addsplit],[data-rmsplit],[data-ask],[data-cv],[data-tpl],[data-ghlfill],[data-ghlpick]'); if (!t) return;
+    if (t.dataset.ghlfill) return ghlFill(true);
+    if (t.dataset.ghlpick) { $('f_ghl').value = t.dataset.ghlpick; setDirty(true); return ghlInfo(); }
     if (t.dataset.cn != null && t.dataset.cv != null) return setConv(t.dataset.cn, t.dataset.cv);
     if (t.dataset.tpl != null) {
       var tp = TEMPLATES[+t.dataset.tpl], next = tp.apply();
@@ -282,7 +339,11 @@
     if (t.dataset.new) return guard(function () { edit(null); $('f_name').focus(); });
     if (t.dataset.addsplit) { $('splits').insertAdjacentHTML('beforeend', splitRow('video', '')); $('splits').lastElementChild.querySelector('.s_amt').focus(); return setDirty(true); }
     if (t.dataset.rmsplit) { t.closest('.srow').remove(); return setDirty(true); }
-    if (t.dataset.copy) { try { navigator.clipboard.writeText(t.dataset.copy); t.textContent = 'Copied'; } catch (er) { /* ignore */ } return; }
+    if (t.dataset.copy) {
+      var label = t.textContent, done = function (ok) { t.textContent = ok ? 'Copied' : 'Copy failed, select and copy by hand'; setTimeout(function () { t.textContent = label; }, 1800); };
+      try { navigator.clipboard.writeText(t.dataset.copy).then(function () { done(true); }, function () { done(false); }); } catch (er) { done(false); }
+      return;
+    }
     if (t.dataset.del) {
       if (!confirm('Delete ' + CUR.name + '? Their link stops working and their goals are lost. To keep them, untick Active client instead.')) return;
       api('/api/admin', { method: 'POST', body: JSON.stringify({ action: 'delete', token: ORIG }) }).then(function (j) { LIST = j.clients; DIRTY = false; edit(LIST.filter(function (x) { return !x.disabled; })[0] || LIST[0] || null); }).catch(function (er) { msg('ferr', er.message); });

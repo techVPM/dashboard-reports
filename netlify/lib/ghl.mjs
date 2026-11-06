@@ -108,7 +108,7 @@ function slimInvoice(v) {
 function slimContact(c) {
   return {
     id: c.id, name: [c.firstNameRaw || c.firstName, c.lastNameRaw || c.lastName].filter(Boolean).join(' ') || c.contactName || c.name || '',
-    company: c.companyName || '', tags: (c.tags || []).map((t) => String(t).toLowerCase().trim()), added: c.dateAdded || null,
+    company: c.companyName || '', source: String(c.source || '').trim(), email: c.email || '', tags: (c.tags || []).map((t) => String(t).toLowerCase().trim()), added: c.dateAdded || null,
     fields: Object.fromEntries((c.customFields || c.customField || []).map((f) => [f.id, f.value ?? f.field_value ?? f.fieldValue])),
   };
 }
@@ -149,6 +149,7 @@ export function computeBusiness({ fields = [], invoices = [], contacts = [], war
   const cmap = new Map(contacts.map((c) => [c.id, c]));
   const ids = new Set([...byContact.keys(), ...contacts.filter((c) => isClientTag(c.tags) || (F.start && c.fields[F.start])).map((c) => c.id)]);
   const reportByAds = new Map(reportClients.filter((c) => c.customer_id).map((c) => [digits(c.customer_id), c]));
+  const reportByGhl = new Map(reportClients.filter((c) => c.ghl_contact_id).map((c) => [c.ghl_contact_id, c]));
 
   const rows = [];
   for (const id of ids) {
@@ -172,15 +173,22 @@ export function computeBusiness({ fields = [], invoices = [], contacts = [], war
     const retainer = fRet || (monthlyAmts.length ? median(monthlyAmts) : null);
     const monthly = !!(fRet || inv.length >= 2 || inv.some((v) => v.recurring) || monthlyAmts.length);
     const months = Math.max(0, ((end || now) - start) / MONTH);
-    const ads = F.ads ? digits(c.fields[F.ads]) : '';
-    const rep = ads ? reportByAds.get(ads) : null;
+    const linked = reportByGhl.get(id) || null;
+    const ads = (F.ads ? digits(c.fields[F.ads]) : '') || (linked ? digits(linked.customer_id) : '');
+    // fee history from the monthly line items on each paid invoice, for the recurring revenue chart
+    const feeHist = inv.map((v) => { const m = v.items.filter((i) => isMonthlyItem(i.name)).reduce((a, i) => a + i.amount, 0); return [v.t, m || (v.recurring ? v.total : 0)]; }).filter((x) => x[1] > 0);
+    // an explicit link in admin wins; the Google Ads ID only links clients that have no contact picked
+    const byAds = ads ? reportByAds.get(ads) : null;
+    const rep = linked || (byAds && !byAds.ghl_contact_id ? byAds : null);
     rows.push({
       id, name, contact: c.name || anyInv.contact_name || '', active, monthly,
       start: ymd(start), start_est: !fStart, end: end ? ymd(end) : null, end_est: !active && !fEnd,
       months: r2(months), retainer: retainer ? r2(retainer) : null, retainer_est: !fRet && !!retainer,
       cash, invoices: inv.length, last_paid: lastPaid ? ymd(lastPaid) : null,
       reason: F.reason ? String(c.fields[F.reason] || '') : '',
-      report: rep ? '/' + rep.token : null, no_invoices: tagged && !inv.length,
+      report: rep ? '/' + rep.token : null, token: rep ? rep.token : null, no_invoices: tagged && !inv.length,
+      ads, source: c.source || '', email: c.email || '',
+      _fees: feeHist, _fret: fRet,
     });
   }
   rows.sort((a, b) => (b.active - a.active) || b.cash - a.cash);
@@ -216,13 +224,83 @@ export function computeBusiness({ fields = [], invoices = [], contacts = [], war
   const churnBase = six.reduce((s, m) => s + activeAt(asDate(m.month + '-01')), 0);
   const churnLost = six.reduce((s, m) => s + m.lost, 0);
 
+  // recurring revenue (MRR) over the same 12 months: what monthly clients were paying at each month end,
+  // split into new clients, lost clients and fee changes. Fees come from their invoices at the time.
+  const feeAt = (r, T) => {
+    if (T >= now - DAY && r.active && r.retainer) return r.retainer; // today matches the headline number
+    let f = null; for (const [ft, amt] of r._fees) { if (ft <= T) f = amt; else break; }
+    return f ?? (r._fees[0]?.[1] ?? r.retainer ?? 0);
+  };
+  const isOn = (r, T) => t(r.start) <= T && (!r.end || t(r.end) >= T);
+  const mrrAt = (T) => mon.reduce((s, r) => s + (isOn(r, T) ? feeAt(r, T) : 0), 0);
+  for (const m of months) {
+    const a = asDate(m.month + '-01'), b0 = Date.UTC(Number(m.month.slice(0, 4)), Number(m.month.slice(5, 7)), 1), b = Math.min(b0 - 1, now);
+    const startM = mrrAt(a - 1), endM = mrrAt(b);
+    const nw = mon.filter((r) => t(r.start) >= a && t(r.start) <= b).reduce((s, r) => s + feeAt(r, b), 0);
+    const lost = mon.filter((r) => r.end && t(r.end) >= a && t(r.end) <= b && !isOn(r, b)).reduce((s, r) => s + feeAt(r, t(r.end)), 0);
+    Object.assign(m, { mrr: r2(endM), mrr_new: r2(nw), mrr_lost: r2(lost), mrr_changed: r2(endM - startM - nw + lost) });
+  }
+
+  // churn reasons, among clients who left
+  const reasonMap = new Map();
+  for (const r of mon.filter((x) => !x.active)) {
+    const k = (r.reason || '').trim() || 'No reason recorded';
+    const o = reasonMap.get(k.toLowerCase()) || { reason: k, count: 0, cash: 0, clients: [] };
+    o.count++; o.cash += r.cash; o.clients.push(r.name); reasonMap.set(k.toLowerCase(), o);
+  }
+  const reasons = [...reasonMap.values()].map((o) => ({ ...o, cash: r2(o.cash) })).sort((a, b) => b.count - a.count);
+
+  // where the best clients come from (GoHighLevel contact source)
+  const srcMap = new Map();
+  for (const r of rows) {
+    const k = (r.source || '').trim() || 'Unknown';
+    const o = srcMap.get(k.toLowerCase()) || { source: k, clients: 0, active: 0, cash: 0, months: 0 };
+    o.clients++; o.active += r.active ? 1 : 0; o.cash += r.cash; o.months += r.months; srcMap.set(k.toLowerCase(), o);
+  }
+  const sources = [...srcMap.values()].map((o) => ({ source: o.source, clients: o.clients, active: o.active, ltv: r2(o.cash / o.clients), avg_months: r2(o.months / o.clients), cash: r2(o.cash) }))
+    .sort((a, b) => b.cash - a.cash);
+
+  // retention by the quarter clients started (monthly clients), last 8 quarters
+  const qOf = (ts) => { const x = new Date(ts); return x.getUTCFullYear() + ' Q' + (Math.floor(x.getUTCMonth() / 3) + 1); };
+  const cohortMap = new Map();
+  for (const r of mon) {
+    const k = qOf(t(r.start));
+    const o = cohortMap.get(k) || { quarter: k, started: 0, active: 0, months: 0, old3: 0, hit3: 0, old6: 0, hit6: 0, old12: 0, hit12: 0 };
+    o.started++; o.active += r.active ? 1 : 0; o.months += r.months;
+    for (const n of [3, 6, 12]) if (t(r.start) <= now - n * MONTH) { o['old' + n]++; if (r.months >= n) o['hit' + n]++; }
+    cohortMap.set(k, o);
+  }
+  const cohorts = [...cohortMap.values()].sort((a, b) => a.quarter.localeCompare(b.quarter)).slice(-8).map((o) => ({
+    quarter: o.quarter, started: o.started, active: o.active, avg_months: r2(o.months / o.started),
+    stay3: o.old3 ? r2(o.hit3 / o.old3) : null, stay6: o.old6 ? r2(o.hit6 / o.old6) : null, stay12: o.old12 ? r2(o.hit12 / o.old12) : null,
+    n3: o.old3, n6: o.old6, n12: o.old12,
+  }));
+
   // invoices that need attention
   const open = live.filter((v) => ['sent', 'partially_paid', 'overdue', 'draft'].includes(v.status) && (v.due > 0 || v.status === 'draft'));
   const billing = open.map((v) => {
     const dueT = asDate(v.due_date);
     const kind = v.status === 'draft' ? 'draft' : dueT && dueT < now ? 'overdue' : 'upcoming';
-    return { client: v.company || v.contact_name, number: v.number, amount: r2(v.due || v.total), due: dueT ? ymd(dueT) : null, kind, status: v.status };
+    return { client: v.company || v.contact_name, contact_id: v.contact_id || '', number: v.number, amount: r2(v.due || v.total), due: dueT ? ymd(dueT) : null, kind, status: v.status };
   }).sort((a, b) => ({ overdue: 0, upcoming: 1, draft: 2 }[a.kind] - { overdue: 0, upcoming: 1, draft: 2 }[b.kind]) || String(a.due).localeCompare(String(b.due)));
+
+  // cash forecast: monthly fees from active clients on their usual billing day, plus invoices already sent
+  const MON = 30.4375 * DAY;
+  const openBy = new Set(open.filter((v) => v.status !== 'draft').map((v) => v.contact_id));
+  const forecast = [30, 60, 90].map((n) => {
+    const until = now + n * DAY;
+    let fees = 0;
+    for (const r of act.filter((x) => x.monthly && x.retainer)) {
+      const anchor = asDate(r.last_paid) || t(r.start);
+      let next = anchor + MON, count = 0;
+      while (next <= until) { if (next > now - 31 * DAY) count++; next += MON; }
+      if (openBy.has(r.id) && count) count--; // the open invoice already covers the next one
+      fees += count * r.retainer;
+    }
+    const sent = open.filter((v) => v.status !== 'draft' && (!asDate(v.due_date) || asDate(v.due_date) <= until)).reduce((s, v) => s + (v.due || v.total), 0);
+    return { days: n, fees: r2(fees), invoices: r2(sent), total: r2(fees + sent) };
+  });
+  for (const r of rows) { delete r._fees; delete r._fret; }
 
   const W = warnings.slice();
   if (!F.start || !F.end) W.push('Add the custom fields "Client Start Date" and "Client End Date" in GoHighLevel. Until then, dates come from first and last payments.');
@@ -243,10 +321,13 @@ export function computeBusiness({ fields = [], invoices = [], contacts = [], war
       churn_year: yearBase ? r2(lostYear / yearBase) : null,
       year_base: yearBase,
       churn_monthly: churnBase ? r2(churnLost / churnBase) : null,
+      churn_lost_6m: churnLost, churn_base_6m: churnBase,
       avg_months: mon.length ? r2(mon.reduce((s, r) => s + r.months, 0) / mon.length) : null,
       median_months: mon.length ? r2(median(mon.map((r) => r.months))) : null,
       avg_months_ended: ended.length ? r2(ended.reduce((s, r) => s + r.months, 0) / ended.length) : null,
       reach6: old6.length ? r2(old6.filter((r) => r.months >= 6).length / old6.length) : null,
+      reach6_n: old6.filter((r) => r.months >= 6).length, reach6_base: old6.length,
+      reach12_n: old12.filter((r) => r.months >= 12).length, reach12_base: old12.length,
       reach12: old12.length ? r2(old12.filter((r) => r.months >= 12).length / old12.length) : null,
       ltv_ended: ended.length ? r2(ended.reduce((s, r) => s + r.cash, 0) / ended.length) : null,
       ltv_all: rows.length ? r2(rows.reduce((s, r) => s + r.cash, 0) / rows.length) : null,
@@ -254,7 +335,7 @@ export function computeBusiness({ fields = [], invoices = [], contacts = [], war
       cash_year: r2(paidInv.filter((v) => v.t >= y0).reduce((s, v) => s + v.paid, 0)),
       overdue: r2(billing.filter((b) => b.kind === 'overdue').reduce((s, b) => s + b.amount, 0)),
     },
-    months, clients: rows, billing,
+    months, clients: rows, billing, forecast, reasons, sources, cohorts,
     quality: { fields_found: F, estimated_dates: est, warnings: W },
   };
 }

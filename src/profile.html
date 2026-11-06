@@ -1,0 +1,132 @@
+<div class="vpm tm pf" id="vpm">
+<div class="wrap">
+  <header class="tbar">
+    <div class="brand">VIDEO POWER<span>MARKETING</span></div>
+    <div class="tbtns"><!--TABS:profile--><button type="button" class="tlink" id="out" hidden>Sign out</button></div>
+  </header>
+  <div class="thead">
+    <div><p class="crumb"><a href="/team">All clients</a> / Client profile</p><h1 id="pname">Client profile</h1><p class="sub" id="psub">Everything about one client in one place.</p></div>
+    <div class="tctl" id="tctl" hidden><select id="pick" aria-label="Switch client"></select></div>
+  </div>
+  <form class="panel gate" id="gate" hidden>
+    <h2>Team sign in</h2>
+    <p class="sub">Use the admin password (the ADMIN_PASSWORD setting in Netlify).</p>
+    <div class="grow"><input type="password" id="pw" autocomplete="current-password" aria-label="Password" placeholder="Password"><button class="mbtn" type="submit">Sign in</button></div>
+    <p class="err" id="gerr" hidden></p>
+  </form>
+  <section id="main"><div class="panel"><p class="msg">Loading</p></div></section>
+</div>
+</div>
+<script>
+(function () {
+  'use strict';
+  var KEY = 'vpm_admin_key', pw = '';
+  try { pw = localStorage.getItem(KEY) || ''; } catch (e) { /* private mode */ }
+  var $ = function (id) { return document.getElementById(id); };
+  var TOKEN = new URLSearchParams(location.search).get('c') || '', CLIENTS = null;
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function money(v) { return v == null ? 'n/a' : '$' + Math.round(v).toLocaleString('en-US'); }
+  function money2(v) { return v == null ? 'n/a' : '$' + (v >= 1000 ? Math.round(v).toLocaleString('en-US') : v.toFixed(2)); }
+  function int(v) { return v == null ? 'n/a' : Math.round(v).toLocaleString('en-US'); }
+  function pct(v, d) { return v == null ? 'n/a' : (v * 100).toFixed(d == null ? 1 : d) + '%'; }
+  function fmt(v, u) { return u === 'money' ? money(v) : u === 'money2' ? money2(v) : u === 'x' ? (v == null ? 'n/a' : v.toFixed(2) + 'x') : int(v); }
+  function chg(a, b, inv) { if (!b || a == null) return ''; var p = Math.round((a - b) / b * 100), good = inv ? p < 0 : p > 0; return '<em class="' + (p === 0 ? '' : good ? 'up' : 'dn') + '">' + (p > 0 ? '+' : '') + p + '%</em>'; }
+  function dlab(s) { return s ? new Date(String(s).slice(0, 10) + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : ''; }
+  function mo(v) { return v == null ? 'n/a' : v < 1 ? 'under 1 month' : (v < 10 ? v.toFixed(1) : Math.round(v)) + ' months'; }
+  var WORD = { good: 'On track', warn: 'Watch', bad: 'Off track', none: 'Too early', nogoals: 'Set up goals', nodata: 'No data yet' };
+  var HW = { red: 'At risk', amber: 'Keep an eye', green: 'Healthy' };
+  function pcls(s) { return s === 'good' || s === 'warn' || s === 'bad' ? s : s === 'nogoals' ? 'setup' : 'early'; }
+
+  function api(path) {
+    return fetch(path, { headers: { 'x-admin-key': pw } }).then(function (r) { return r.json().then(function (j) { if (r.status === 401) throw { auth: 1 }; if (!r.ok) throw new Error(j.error || 'Failed'); return j; }); });
+  }
+  function gate(msg) { $('gate').hidden = false; $('main').innerHTML = ''; $('tctl').hidden = true; $('out').hidden = true; if (msg) { $('gerr').hidden = false; $('gerr').textContent = msg; } $('pw').focus(); }
+  $('gate').addEventListener('submit', function (e) { e.preventDefault(); pw = $('pw').value.trim(); if (!pw) return; try { localStorage.setItem(KEY, pw); } catch (er) { /* ignore */ } load(); });
+  $('out').addEventListener('click', function () { try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ } pw = ''; gate(); });
+  $('pick').addEventListener('change', function () { TOKEN = this.value; try { history.replaceState(null, '', '/profile?c=' + encodeURIComponent(TOKEN)); } catch (e) { /* ignore */ } load(); });
+
+  function picker() {
+    if (CLIENTS) return Promise.resolve();
+    return api('/api/admin').then(function (j) {
+      CLIENTS = (j.clients || []).slice().sort(function (a, b) { return (a.disabled ? 1 : 0) - (b.disabled ? 1 : 0) || a.name.localeCompare(b.name); });
+      if (!TOKEN && CLIENTS.length) TOKEN = (CLIENTS.filter(function (c) { return !c.disabled; })[0] || CLIENTS[0]).token;
+    });
+  }
+  function drawPicker() {
+    $('pick').innerHTML = (CLIENTS || []).map(function (c) { return '<option value="' + esc(c.token) + '"' + (c.token === TOKEN ? ' selected' : '') + '>' + esc(c.name) + (c.disabled ? ' (inactive)' : '') + '</option>'; }).join('');
+    $('tctl').hidden = false;
+  }
+  function load() {
+    if (!pw) return gate();
+    $('main').innerHTML = '<div class="panel"><p class="msg">Loading</p></div>';
+    picker().then(function () {
+      $('gate').hidden = true; $('gerr').hidden = true; $('out').hidden = false; drawPicker();
+      if (!TOKEN) { $('main').innerHTML = '<div class="panel"><p class="msg">No clients yet. Add one on the Clients and goals page.</p></div>'; return; }
+      return api('/api/profile?c=' + encodeURIComponent(TOKEN)).then(draw);
+    }).catch(function (e) { if (e && e.auth) gate('That password did not work.'); else $('main').innerHTML = '<div class="panel"><p class="msg">' + esc(e.message) + '</p></div>'; });
+  }
+
+  function check(c) {
+    var st = c.status === 'none' ? 'early' : c.status;
+    return '<div class="chk"><div class="cl">' + esc(c.label) + '</div><div class="cv"><b>' + fmt(c.actual, c.unit) + '</b><span>goal ' + (c.low ? fmt(c.low, c.unit) + ' to ' : '') + fmt(c.goal, c.unit) + '</span><span class="pill ' + st + '">' + (c.status === 'none' ? 'Too early' : WORD[c.status]) + '</span></div></div>';
+  }
+  function adsPanel(r) {
+    if (!r || r.missing) return '<div class="panel"><h2>Ad results</h2><p class="msg small">' + esc((r && r.why) || 'No data yet') + '. It fills in after the next 10 am refresh, or press Load now on the All clients page.</p></div>';
+    var w = r.wow, spendBad = /spend/i.test(r.reason || '');
+    var cal = (r.alerts || []).filter(function (a) { return !(spendBad && a.kind === 'overspend'); });
+    return '<div class="panel"><div class="ph2"><h2>Ad results, last 30 days</h2><span class="pill ' + pcls(r.overall) + '">' + WORD[r.overall] + '</span></div>' +
+      (r.range ? '<p class="sub">' + dlab(r.range.from) + ' to ' + dlab(r.range.to) + (r.mixed ? ', ' + (r.scope === 'vpm' ? 'VPM campaigns only' : 'all campaigns') : '') + '</p>' : '') +
+      (r.reason ? '<p class="reason ' + r.overall + '">' + esc(r.reason) + '</p>' : '') +
+      (cal.length ? '<ul class="calerts">' + cal.map(function (a) { return '<li class="' + a.level + '">' + esc(a.text) + '</li>'; }).join('') + '</ul>' : '') +
+      '<div class="nums"><div><span>Spend</span><b>' + money(r.spend) + '</b>' + chg(r.spend, r.prev.spend) + '</div><div><span>' + esc(r.label) + '</span><b>' + int(r.results) + '</b>' + chg(r.results, r.prev.results) + '</div><div><span>Cost each</span><b>' + money2(r.cpa) + '</b>' + (r.cpa && r.prev.cpa ? chg(r.cpa, r.prev.cpa, true) : '') + '</div></div>' +
+      (w ? '<p class="wow"><span>Last 7 days vs the week before</span><b>Spend ' + money(w.spend) + ' ' + chg(w.spend, w.prev.spend) + '</b><b>' + esc(r.label) + ' ' + int(w.results) + ' ' + chg(w.results, w.prev.results) + '</b><b>Cost each ' + money2(w.cpa) + ' ' + (w.cpa && w.prev.cpa ? chg(w.cpa, w.prev.cpa, true) : '') + '</b></p>' : '') +
+      (r.checks.length ? '<div class="checks">' + r.checks.map(check).join('') + '</div>' : '<p class="msg small">No goals yet. <a href="/admin#' + esc(r.token) + '">Add goals</a>.</p>') +
+      '</div>';
+  }
+  function bizPanel(b, j) {
+    if (!j.business_connected) return '<div class="panel"><h2>Billing and tenure</h2><p class="msg small">' + (j.ghl_configured ? 'GoHighLevel has not been read yet. Open the <a href="/business">Business</a> page once and this fills in.' : 'GoHighLevel is not connected yet, so billing and tenure are not shown. Add GHL_TOKEN in Netlify.') + '</p></div>';
+    if (!b) return '<div class="panel"><h2>Billing and tenure</h2><p class="msg small">Not linked to a GoHighLevel contact yet. Pick their contact on the <a href="/admin#' + esc(j.client.token) + '">Clients and goals</a> page, or add their Google Ads ID to the contact in GoHighLevel.</p></div>';
+    var est = function (x) { return x ? ' <sup class="est" title="Estimated from invoices">~</sup>' : ''; };
+    var rows = [
+      ['Status', b.active ? 'Active client' : 'Former client' + (b.end ? ', ended ' + dlab(b.end) + est(b.end_est) : '')],
+      ['Client since', dlab(b.start) + est(b.start_est) + ' (' + mo(b.months) + ')'],
+      ['Monthly fee', b.retainer ? money(b.retainer) + est(b.retainer_est) : 'n/a'],
+      ['Lifetime cash', money(b.cash) + ' from ' + int(b.invoices) + ' paid invoice' + (b.invoices === 1 ? '' : 's')],
+      ['Last paid', b.last_paid ? dlab(b.last_paid) : 'n/a'],
+      ['Came from', esc(b.source || 'Unknown')]
+    ];
+    if (!b.active && b.reason) rows.push(['Why they left', esc(b.reason)]);
+    var inv = (b.open_invoices || []).length ? '<h3>Open invoices</h3><ul class="ilist">' + b.open_invoices.map(function (i) { return '<li><span class="pill ' + (i.kind === 'overdue' ? 'bad' : i.kind === 'upcoming' ? 'warn' : 'early') + '">' + (i.kind === 'overdue' ? 'Overdue' : i.kind === 'upcoming' ? 'Coming due' : 'Draft') + '</span> ' + money(i.amount) + (i.number ? ' · #' + esc(i.number) : '') + (i.due ? ' · due ' + dlab(i.due) : '') + '</li>'; }).join('') + '</ul>' : '<p class="sub">No open invoices.</p>';
+    return '<div class="panel"><h2>Billing and tenure</h2><dl class="kv">' + rows.map(function (r) { return '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>'; }).join('') + '</dl>' + inv + '</div>';
+  }
+  function videosPanel(v) {
+    if (!v.length) return '';
+    return '<div class="panel"><div class="ph2"><h2>Top videos, last 30 days</h2><a class="plk" href="/creative">Creative Hub</a></div><ul class="pvids">' + v.map(function (x) {
+      var ok = /^[A-Za-z0-9_-]{6,20}$/.test(x.video_id || '');
+      return '<li>' + (ok ? '<a href="https://www.youtube.com/watch?v=' + x.video_id + '" target="_blank" rel="noopener" class="pth" style="background-image:url(https://i.ytimg.com/vi/' + x.video_id + '/mqdefault.jpg)" aria-label="Watch ' + esc(x.title) + '"></a>' : '<span class="pth"></span>') +
+        '<div><b>' + esc(x.title) + '</b><small>' + int(x.results) + ' ' + esc(x.result_label.toLowerCase()) + ' · ' + money2(x.cpa) + ' each · ' + pct(x.ctr, 2) + ' CTR · ' + money(x.spend) + ' spend' + (x.running === false ? ' · paused' : '') + '</small></div></li>';
+    }).join('') + '</ul></div>';
+  }
+  function draw(j) {
+    var c = j.client, r = j.ads, L = j.links, b = j.business;
+    document.title = c.name + ' | VPM';
+    $('pname').textContent = c.name;
+    $('psub').innerHTML = esc(c.customer_id) + (c.disabled ? ' · <span class="pill early">Inactive</span>' : '') + (r && r.health ? ' · <span class="hdot ' + r.health.level + '" title="' + esc(r.health.why.join('. ') || 'Nothing worrying') + '"><i></i>' + HW[r.health.level] + '</span>' : '');
+    var links = '<div class="plinks">' +
+      '<a class="mbtn" href="' + esc(L.report) + '" target="_blank" rel="noopener">Client report</a>' +
+      '<a class="obtn" href="' + esc(L.ads) + '" target="_blank" rel="noopener">Google Ads</a>' +
+      (L.ghl ? '<a class="obtn" href="' + esc(L.ghl) + '" target="_blank" rel="noopener">GoHighLevel</a>' : '') +
+      (L.drive ? '<a class="obtn" href="' + esc(L.drive) + '" target="_blank" rel="noopener">Drive folder</a>' : '') +
+      (L.meta ? '<a class="obtn" href="' + esc(L.meta) + '" target="_blank" rel="noopener">Meta Ads</a>' : '') +
+      '<a class="obtn" href="' + esc(L.admin) + '">Edit goals and links</a></div>';
+    var health = r && r.health ? '<p class="hline"><span class="hdot ' + r.health.level + '"><i></i>' + HW[r.health.level] + '</span> <span class="mut">' + esc(r.health.why.join('. ') || 'Nothing worrying right now') + (r.health.linked ? '' : '. Not linked to GoHighLevel, so invoices and tenure are not counted') + '.</span></p>' : '';
+    var notes = '<div class="panel"><div class="ph2"><h2>Internal notes</h2><a class="plk" href="' + esc(L.admin) + '">Edit</a></div>' + (c.internal_notes ? '<p class="pnotes">' + esc(c.internal_notes) + '</p>' : '<p class="msg small">No notes yet. Add them on the Clients and goals page. Only the team sees them.</p>') +
+      (c.goal_note ? '<h3>Goal shown to the client</h3><p class="gnote">' + esc(c.goal_note) + '</p>' : '') +
+      (c.last_change_date ? '<p class="sub">Last big account change: ' + dlab(c.last_change_date) + '</p>' : '') + '</div>';
+    var camps = r && r.campaigns && r.campaigns.length ? '<div class="panel"><h2>Campaigns</h2><div class="tw"><table class="t"><thead><tr><th><button>Campaign</button></th><th class="n"><button>Spend</button></th><th class="n"><button>' + esc(r.label) + '</button></th><th class="n"><button>Cost each</button></th></tr></thead><tbody>' +
+      r.campaigns.map(function (x) { return '<tr><td class="nm"><b>' + esc(x.name) + '</b><br><span class="tag">' + esc(x.type) + '</span></td><td class="n">' + money(x.spend) + '</td><td class="n">' + int(x.res) + '</td><td class="n">' + money2(x.cpa) + '</td></tr>'; }).join('') + '</tbody></table></div></div>' : '';
+    $('main').innerHTML = '<div class="panel ptop">' + links + health + '</div><div class="two2">' + adsPanel(r) + bizPanel(b, j) + '</div><div class="two2">' + notes + (videosPanel(j.videos || []) || '<div class="panel"><h2>Top videos</h2><p class="msg small">No videos with 500 or more impressions in the last 30 days.</p></div>') + '</div>' + camps;
+  }
+  load();
+})();
+</script>

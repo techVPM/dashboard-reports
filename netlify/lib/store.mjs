@@ -41,7 +41,7 @@ let memList = null, memAt = 0;
 function cfgStore() {
   try { return getStore({ name: 'vpm-config', consistency: 'strong' }); } catch { return null; }
 }
-export const RESERVED = ['team', 'admin', 'creative', 'business', 'api', 'demo', 'demo-calls', 'index', '404'];
+export const RESERVED = ['team', 'admin', 'creative', 'business', 'profile', 'api', 'demo', 'demo-calls', 'index', '404'];
 
 export async function getClientsWithSource(env = process.env) {
   if (memList && Date.now() - memAt < 10000) return { clients: memList, source: 'admin' };

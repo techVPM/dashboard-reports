@@ -4,7 +4,8 @@
 import { getClients, cacheGet, cachePut, latestKey } from '../lib/store.mjs';
 import { cacheKey, resolveRange } from '../lib/range.mjs';
 import { buildReport } from '../lib/ads.mjs';
-import { summarize, emptyRow } from '../lib/team.mjs';
+import { summarize, emptyRow, healthFor, bizByToken } from '../lib/team.mjs';
+import { savedBusiness, refreshBusiness } from '../lib/business.mjs';
 import { demoReport } from '../lib/demo.mjs';
 import { isAdmin, jsonRes } from '../lib/auth.mjs';
 
@@ -18,6 +19,11 @@ export default async (req) => {
   const token = url.searchParams.get('token');
   const scope = url.searchParams.get('scope') || 'default';
 
+  let bizHit = await savedBusiness().catch(() => null);
+  if (!bizHit && process.env.VPM_DEV) bizHit = { snap: await refreshBusiness().catch(() => null) };
+  const BIZ = bizByToken(bizHit?.snap, all);
+  const withHealth = (row) => (row.missing ? row : { ...row, health: healthFor(row, BIZ.get(row.token)) });
+
   if (token) {
     const c = all.find((x) => x.token === token);
     if (!c) return jsonRes({ error: 'Client not found.' }, 404);
@@ -25,7 +31,7 @@ export default async (req) => {
     try {
       if (!custom && PRE.includes(days)) {
         const hit = await saved(c, days);
-        if (hit) return jsonRes({ row: summarize(c, hit.payload, hit.saved_at, scope) });
+        if (hit) return jsonRes({ row: withHealth(summarize(c, hit.payload, hit.saved_at, scope)) });
       }
       const r = resolveRange(url.searchParams, c.timezone);
       if (r.error) return jsonRes({ error: r.error }, 400);
@@ -37,7 +43,7 @@ export default async (req) => {
         await cachePut(key, hit);
         if (!custom && PRE.includes(payload.meta.range.days) && r.to < r.today) await cachePut(latestKey(c.token, payload.meta.range.days), hit);
       }
-      return jsonRes({ row: summarize(c, hit.payload, hit.saved_at, scope) });
+      return jsonRes({ row: withHealth(summarize(c, hit.payload, hit.saved_at, scope)) });
     } catch (e) {
       return jsonRes({ row: emptyRow(c, 'Could not load: ' + e.message) });
     }
@@ -47,12 +53,12 @@ export default async (req) => {
   const rows = await Promise.all(active.map(async (c) => {
     try {
       const hit = PRE.includes(days) ? await saved(c, days) : null;
-      return hit ? summarize(c, hit.payload, hit.saved_at, scope) : emptyRow(c, 'Not loaded yet');
+      return hit ? withHealth(summarize(c, hit.payload, hit.saved_at, scope)) : emptyRow(c, 'Not loaded yet');
     } catch (e) {
       return emptyRow(c, 'Could not read: ' + e.message);
     }
   }));
-  return jsonRes({ generated_at: new Date().toISOString(), days, inactive: all.length - active.length, clients: rows });
+  return jsonRes({ generated_at: new Date().toISOString(), days, inactive: all.length - active.length, clients: rows, business_linked: !!bizHit?.snap });
 };
 
 export const config = { path: '/api/team' };
