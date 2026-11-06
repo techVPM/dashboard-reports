@@ -352,3 +352,48 @@ test('every resource field used in WHERE is also in SELECT (Google requires it, 
     }
   }
 });
+
+test('business numbers from GoHighLevel: tenure, churn, revenue, estimated dates', async () => {
+  const { computeBusiness, findFields } = await import('../netlify/lib/ghl.mjs');
+  const { demoBusiness } = await import('../netlify/lib/demo-business.mjs');
+  const now = Date.parse('2026-11-05T12:00:00Z');
+  const b = computeBusiness({ ...demoBusiness(now), now });
+  assert.equal(b.kpis.active, 5);
+  assert.equal(b.kpis.mrr, 23500);
+  assert.ok(b.kpis.churn_year > 0 && b.kpis.churn_year < 1);
+  assert.equal(b.months.length, 12);
+  assert.ok(b.clients.every((r) => !r.start_est));             // start dates came from the custom field
+  assert.ok(b.billing.some((x) => x.kind === 'overdue') && b.billing.some((x) => x.kind === 'upcoming'));
+  assert.deepEqual(findFields([{ id: 'a', name: 'Client Start Date' }, { id: 'b', name: 'Client End Date' }, { id: 'c', name: 'Monthly Retainer' }, { id: 'd', name: 'Google Ads Account ID (Optional)' }]), { start: 'a', end: 'b', retainer: 'c', reason: null, ads: 'd' });
+  // without the custom fields, dates are estimated from invoices and a note says how to fix it
+  const raw = demoBusiness(now);
+  const c2 = computeBusiness({ ...raw, fields: [], now });
+  assert.ok(c2.clients.some((r) => r.start_est));
+  assert.ok(c2.quality.warnings.some((w) => /Client Start Date/.test(w)));
+  // "potential client" is not the "client" tag
+  const c3 = computeBusiness({ invoices: [], contacts: [{ id: 'x', name: 'P', company: 'Prospect', tags: ['potential client'], fields: {}, added: '2026-10-01' }], now });
+  assert.equal(c3.kpis.active, 0);
+});
+
+test('GoHighLevel requests use the private key, version header and paging', async () => {
+  const { fetchAll } = await import('../netlify/lib/ghl.mjs');
+  const seen = [];
+  const f = async (url, init) => {
+    seen.push([init.method, url.replace('https://services.leadconnectorhq.com', ''), init.headers.Authorization, init.headers.Version]);
+    if (url.includes('/customFields')) return new Response(JSON.stringify({ customFields: [{ id: 'fs', name: 'Client Start Date' }] }));
+    if (url.includes('/invoices/')) {
+      const off = Number(new URL(url).searchParams.get('offset'));
+      const list = Array.from({ length: off === 0 ? 100 : 20 }, (_, i) => ({ _id: 'i' + off + i, status: 'paid', total: 100, amountPaid: 100, issueDate: '2026-10-01', contactDetails: { id: 'c' + (i % 3) } }));
+      return new Response(JSON.stringify({ invoices: list, total: 120 }));
+    }
+    if (url.includes('/contacts/search')) return new Response(JSON.stringify({ contacts: [{ id: 'c0', tags: ['client'], companyName: 'A', customFields: [{ id: 'fs', value: '2026-01-01' }] }] }));
+    if (url.includes('/contacts/')) return new Response(JSON.stringify({ contact: { id: url.split('/').pop(), tags: [], companyName: 'B' } }));
+    return new Response('{}', { status: 404 });
+  };
+  const r = await fetchAll({ env: { GHL_TOKEN: 'pit-test' }, fetchFn: f });
+  assert.equal(r.invoices.length, 120);
+  assert.equal(r.contacts.length, 3);
+  assert.ok(seen.every((s) => s[2] === 'Bearer pit-test' && s[3] === '2021-07-28'));
+  assert.ok(seen.some((s) => s[0] === 'POST' && s[1] === '/contacts/search'));
+  await assert.rejects(fetchAll({ env: {}, fetchFn: f }), /GHL_TOKEN/);
+});

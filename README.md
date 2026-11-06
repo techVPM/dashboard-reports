@@ -119,7 +119,21 @@ Add one more setting in Netlify (Site configuration, Environment variables): `AD
 
 - **`/creative`**: the Creative Hub for the creative team. Every video running for active clients, ranked by CTR, conversion rate, cost per conversion and how many people watch to the end. To give the creative team access without the admin password, add a Netlify setting `CREATIVE_PASSWORD`; it opens only this page.
 
+- **`/business`**: the Business page, from GoHighLevel. Active clients, monthly recurring revenue, new and lost clients, churn, how long clients stay, lifetime value, cash by month, invoices to look at, and every client with start date, months, monthly fee and lifetime cash. Admin password only.
+
 These pages ask for the password once per browser.
+
+### Connecting GoHighLevel (Business page)
+
+1. In the Video Power Marketing sub-account: Settings, Private Integrations, create one with read-only access to contacts, invoices and payments, custom fields and locations.
+2. In Netlify, add `GHL_TOKEN` = that key (mark it secret). Optional: `GHL_LOCATION_ID` if the sub-account ever changes (default is the VPM sub-account).
+3. Add these contact custom fields in GoHighLevel and fill them for current and past clients:
+   - **Client Start Date** (date), **Client End Date** (date), **Monthly Retainer** (number), and optionally **Churn Reason** (dropdown).
+   The page finds them by name. Until they exist, start and end dates are estimated from first and last payments and marked with ~.
+4. Keep the **client** tag on active clients only. Remove it (and set Client End Date) when a client leaves.
+5. Fill **Google Ads Account ID** on each client contact to link their name to their ad report.
+
+The Business numbers refresh with the daily 10 am job, or press **Refresh from GoHighLevel** on the page.
 
 ## Part 4. Add clients
 
@@ -233,6 +247,7 @@ After a deploy, Netlify also builds `dist/ghl-embed.html`. It is the same report
 
 ## Version notes
 
+- **2.2**: Business page (`/business`) from GoHighLevel, added as a fourth tab on the team pages.
 - **2.1**: client report dates sit top right again, with the campaign filters in the bar below the title; every table on Ads & Creative starts at 5 rows with a 5 / 10 / 20 per page choice; Creative Hub leaderboard text stays inside its boxes, dates (now with Custom) on the right, and the campaign switch moved into the filters; in admin the picked conversions fold into one summary line.
 - **2.0**: tabs across the team pages (All clients, Creative Hub, Clients and goals); client report has a single filter bar under the title, 4 or 5 headline numbers with "Show more numbers", an Ads & Creative tab (Videos and Ads together), softer status labels, no projection, no hour chart, and Insights trimmed to Wins, our next step and 3 key insights; keywords and raw search terms only show with `?team=1` on the report link; campaigns are clearly clickable; loading bar with status; saved reports show instantly and refresh in the background; team page groups "Set up goals" and "No data yet", flags missing setup, says why a client is off track, equal-size cards with details in a popup; Creative Hub hides videos under 500 impressions by default; admin has goal templates and picks conversions from the account's real list.
 - **1.9**: fixes empty Videos and Landing pages (Google requires campaign.status in the SELECT when the paused filter is on), saved reports from older versions are rebuilt automatically, browser tab icon (put the real VPM icon at `public/favicon.png` to use it instead of the placeholder), Creative Hub shows all videos by default.

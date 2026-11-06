@@ -1,0 +1,139 @@
+<div class="vpm tm bz" id="vpm">
+<div class="wrap">
+  <header class="tbar">
+    <div class="brand">VIDEO POWER<span>MARKETING</span></div>
+    <div class="tbtns"><!--TABS:business--><button type="button" class="tlink" id="out" hidden>Sign out</button></div>
+  </header>
+  <div class="thead">
+    <div><h1>Business</h1><p class="sub" id="tsub">Clients, retention and cash, from GoHighLevel.</p></div>
+    <div class="tctl" id="tctl" hidden><button type="button" class="obtn" id="refresh">Refresh from GoHighLevel</button></div>
+  </div>
+  <form class="panel gate" id="gate" hidden>
+    <h2>Team sign in</h2>
+    <p class="sub">Use the admin password (the ADMIN_PASSWORD setting in Netlify).</p>
+    <div class="grow"><input type="password" id="pw" autocomplete="current-password" aria-label="Password" placeholder="Password"><button class="mbtn" type="submit">Sign in</button></div>
+    <p class="err" id="gerr" hidden></p>
+  </form>
+  <div class="cprog" id="prog" hidden><div class="lbar"><i id="pfill"></i></div><p id="ptext">Reading clients and invoices from GoHighLevel</p></div>
+  <section id="main"><div class="panel"><p class="msg">Loading</p></div></section>
+</div>
+</div>
+<script>
+(function () {
+  'use strict';
+  var KEY = 'vpm_admin_key', pw = '';
+  try { pw = localStorage.getItem(KEY) || ''; } catch (e) { /* private mode */ }
+  var $ = function (id) { return document.getElementById(id); };
+  var SNAP = null, SAVED = 0, FILT = 'active', SORT = ['cash', -1];
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function money(v) { return v == null ? 'n/a' : '$' + Math.round(v).toLocaleString('en-US'); }
+  function int(v) { return v == null ? 'n/a' : Math.round(v).toLocaleString('en-US'); }
+  function pct(v) { return v == null ? 'n/a' : Math.round(v * 100) + '%'; }
+  function mo(v) { return v == null ? 'n/a' : (v < 10 ? v.toFixed(1) : Math.round(v)) + ' mo'; }
+  function dlab(s) { return s ? new Date(s + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : ''; }
+  function mlab(s) { return new Date(s + '-15T12:00:00Z').toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }); }
+
+  function api(method) {
+    return fetch('/api/business', { method: method || 'GET', headers: { 'x-admin-key': pw } }).then(function (r) { return r.json().then(function (j) { if (r.status === 401) throw { auth: 1 }; if (!r.ok) throw new Error(j.error || 'Failed'); return j; }); });
+  }
+  function gate(msg) { $('gate').hidden = false; $('main').innerHTML = ''; $('tctl').hidden = true; $('out').hidden = true; if (msg) { $('gerr').hidden = false; $('gerr').textContent = msg; } $('pw').focus(); }
+  $('gate').addEventListener('submit', function (e) { e.preventDefault(); pw = $('pw').value.trim(); if (!pw) return; try { localStorage.setItem(KEY, pw); } catch (er) { /* ignore */ } load(); });
+  $('out').addEventListener('click', function () { try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ } pw = ''; gate(); });
+
+  var ptimer = null;
+  function progress(on) {
+    clearInterval(ptimer); $('prog').hidden = !on; if (!on) return;
+    var t0 = Date.now(); $('pfill').style.width = '0%';
+    ptimer = setInterval(function () { var t = (Date.now() - t0) / 1000; $('pfill').style.width = (92 * (1 - Math.exp(-t / 8))).toFixed(1) + '%'; }, 200);
+  }
+  function load(method) {
+    if (!pw) return gate();
+    progress(true);
+    api(method).then(function (j) {
+      progress(false); SNAP = j.snap; SAVED = j.saved_at;
+      $('gate').hidden = true; $('gerr').hidden = true; $('out').hidden = false; $('tctl').hidden = false;
+      draw();
+    }).catch(function (e) {
+      progress(false);
+      if (e && e.auth) return gate('That password did not work.');
+      $('tctl').hidden = false; $('out').hidden = false; $('gate').hidden = true;
+      $('main').innerHTML = '<div class="panel"><h2>Could not load GoHighLevel</h2><p class="msg">' + esc(e.message) + '</p></div>';
+    });
+  }
+  $('refresh').addEventListener('click', function () { this.disabled = true; var b = this; load('POST'); setTimeout(function () { b.disabled = false; }, 4000); });
+
+  function tile(label, value, sub, cls) { return '<div class="kpi' + (cls ? ' ' + cls : '') + '"><div class="l">' + label + '</div><div class="v">' + value + '</div>' + (sub ? '<div class="ksub">' + sub + '</div>' : '') + '</div>'; }
+
+  // Bar chart drawn by hand: one bar per month, the value on hover and under the last bar.
+  function bars(rows, key, fmt, color) {
+    var W = 560, H = 190, P = 26, max = Math.max.apply(null, rows.map(function (r) { return r[key]; }).concat([1]));
+    var bw = (W - P * 2) / rows.length;
+    var g = rows.map(function (r, i) {
+      var h = (r[key] / max) * (H - 50), x = P + i * bw + 4, y = H - 24 - h;
+      return '<g><title>' + mlab(r.month) + ': ' + fmt(r[key]) + '</title><rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (bw - 8).toFixed(1) + '" height="' + Math.max(h, 1).toFixed(1) + '" rx="3" fill="' + color + '" opacity="' + (i === rows.length - 1 ? 0.55 : 1) + '"/>' +
+        (i === rows.length - 1 || r[key] === max ? '<text x="' + (x + (bw - 8) / 2).toFixed(1) + '" y="' + (y - 6).toFixed(1) + '" text-anchor="middle" class="cv">' + fmt(r[key]) + '</text>' : '') +
+        '<text x="' + (x + (bw - 8) / 2).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" class="cx">' + mlab(r.month) + '</text></g>';
+    }).join('');
+    return '<svg class="bchart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Monthly chart">' + g + '</svg>';
+  }
+  function moves(rows) {
+    return '<div class="moves">' + rows.slice(-6).map(function (r) { return '<span><b>' + mlab(r.month) + '</b> <i class="up">+' + r.new + '</i> <i class="dn">-' + r.lost + '</i></span>'; }).join('') + '</div>';
+  }
+
+  function clientTable() {
+    var rows = SNAP.clients.filter(function (r) { return FILT === 'all' || (FILT === 'active' ? r.active : !r.active); });
+    var k = SORT[0], d = SORT[1];
+    rows.sort(function (a, b) { var x = a[k], y = b[k]; if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (typeof x === 'string' ? x.localeCompare(y) : x - y) * d; });
+    var cols = [['name', 'Client'], ['active', 'Status'], ['start', 'Started'], ['end', 'Ended'], ['months', 'Months'], ['retainer', 'Monthly fee'], ['cash', 'Lifetime cash'], ['reason', 'Why they left']];
+    if (FILT === 'active') cols = cols.filter(function (c) { return c[0] !== 'end' && c[0] !== 'reason'; });
+    var est = '<sup class="est" title="Estimated from invoices. Add the GoHighLevel custom field for the exact value.">~</sup>';
+    var head = '<thead><tr>' + cols.map(function (c) { var on = SORT[0] === c[0]; return '<th class="' + (/months|retainer|cash/.test(c[0]) ? 'n' : '') + '"><button type="button" data-sort="' + c[0] + '">' + c[1] + (on ? (SORT[1] > 0 ? ' ▲' : ' ▼') : '') + '</button></th>'; }).join('') + '</tr></thead>';
+    var body = rows.map(function (r) {
+      var cells = {
+        name: '<td class="nm"><b>' + (r.report ? '<a href="' + esc(r.report) + '" target="_blank" rel="noopener">' + esc(r.name) + '</a>' : esc(r.name)) + '</b>' + (r.contact && r.contact.toLowerCase() !== r.name.toLowerCase() ? '<br><small class="mut">' + esc(r.contact) + '</small>' : '') + (r.monthly ? '' : '<br><span class="tag">One-time project</span>') + '</td>',
+        active: '<td><span class="pill ' + (r.active ? 'good' : 'early') + '">' + (r.active ? 'Active' : 'Former') + '</span></td>',
+        start: '<td>' + dlab(r.start) + (r.start_est ? est : '') + '</td>',
+        end: '<td>' + (r.end ? dlab(r.end) + (r.end_est ? est : '') : '') + '</td>',
+        months: '<td class="n">' + mo(r.months) + '</td>',
+        retainer: '<td class="n">' + (r.retainer ? money(r.retainer) + (r.retainer_est ? est : '') : '<span class="mut">n/a</span>') + '</td>',
+        cash: '<td class="n">' + money(r.cash) + '</td>',
+        reason: '<td>' + esc(r.reason || '') + '</td>'
+      };
+      return '<tr>' + cols.map(function (c) { return cells[c[0]]; }).join('') + '</tr>';
+    }).join('');
+    return '<div class="tw"><table class="t">' + head + '<tbody>' + (body || '<tr><td colspan="8" class="mut">No clients in this group.</td></tr>') + '</tbody></table></div><p class="sub legend2"><sup class="est">~</sup> estimated from invoices. Client names link to their ad report when the GoHighLevel contact has their Google Ads ID.</p>';
+  }
+
+  function draw() {
+    var K = SNAP.kpis, S = SNAP;
+    $('tsub').textContent = 'Clients, retention and cash, from GoHighLevel. Updated ' + new Date(SAVED).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + '.';
+    var out = '<section class="sumrow bzk">' +
+      tile('Active clients', int(K.active), K.new_month ? '+' + K.new_month + ' this month' : '') +
+      tile('Monthly recurring revenue', money(K.mrr), K.avg_retainer ? money(K.avg_retainer) + ' per client' : '') +
+      tile('New clients this year', int(K.new_year), '') +
+      tile('Clients lost this year', int(K.lost_year), K.lost_month ? K.lost_month + ' this month' : '') +
+      tile('Churn this year', pct(K.churn_year), K.year_base ? K.lost_year + ' of ' + K.year_base + ' monthly clients' : '', K.churn_year > 0.4 ? 'bad' : '') +
+      tile('Average time as a client', mo(K.avg_months), 'median ' + mo(K.median_months)) +
+      tile('Stay 6 months or more', pct(K.reach6), K.reach12 != null ? pct(K.reach12) + ' reach 12 months' : '') +
+      tile('Lifetime value', money(K.ltv_ended), 'average for clients who left') +
+      tile('Cash last 30 days', money(K.cash_30), money(K.cash_year) + ' this year') +
+      tile('Overdue', money(K.overdue), '', K.overdue > 0 ? 'bad' : '') +
+      '</section>';
+    out += '<div class="two2"><div class="panel"><h2>Cash collected by month</h2><p class="sub">Paid invoices in GoHighLevel. This month so far is lighter.</p>' + bars(S.months, 'cash', money, 'var(--c1)') + '</div>' +
+      '<div class="panel"><h2>Monthly clients by month</h2><p class="sub">Clients on a monthly plan at any point in the month, with clients gained and lost.</p>' + bars(S.months, 'active', int, 'var(--c3)') + moves(S.months) + '</div></div>';
+    if (S.billing.length) {
+      out += '<div class="panel"><h2>Invoices to look at</h2><p class="sub">Overdue, coming due, and drafts not yet sent.</p><div class="tw"><table class="t"><thead><tr><th><button>Client</button></th><th><button>Invoice</button></th><th class="n"><button>Amount</button></th><th><button>Due</button></th><th><button>Status</button></th></tr></thead><tbody>' +
+        S.billing.map(function (b) { return '<tr><td class="nm"><b>' + esc(b.client) + '</b></td><td>' + esc(b.number ? '#' + b.number : '') + '</td><td class="n">' + money(b.amount) + '</td><td>' + (b.due ? dlab(b.due) : '') + '</td><td><span class="pill ' + (b.kind === 'overdue' ? 'bad' : b.kind === 'upcoming' ? 'warn' : 'early') + '">' + (b.kind === 'overdue' ? 'Overdue' : b.kind === 'upcoming' ? 'Coming due' : 'Draft') + '</span></td></tr>'; }).join('') + '</tbody></table></div></div>';
+    }
+    out += '<div class="panel"><div class="ph2"><h2>Clients</h2><div class="seg" role="group" aria-label="Which clients">' + [['active', 'Active'], ['former', 'Former'], ['all', 'All']].map(function (o) { return '<button type="button" data-f="' + o[0] + '" class="' + (FILT === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div></div>' + clientTable() + '</div>';
+    if (S.quality.warnings.length) out += '<div class="panel"><h2>To make these numbers exact</h2><ul class="qlist">' + S.quality.warnings.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></div>';
+    $('main').innerHTML = out;
+  }
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-f],[data-sort]'); if (!t || !SNAP) return;
+    if (t.dataset.f) { FILT = t.dataset.f; return draw(); }
+    if (t.dataset.sort) { var k = t.dataset.sort; SORT = SORT[0] === k ? [k, -SORT[1]] : [k, k === 'name' || k === 'reason' ? 1 : -1]; return draw(); }
+  });
+  load();
+})();
+</script>

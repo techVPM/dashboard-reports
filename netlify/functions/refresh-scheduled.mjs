@@ -22,6 +22,10 @@ export default async () => {
       }).then((r) => r.status)
     )
   );
+  // GoHighLevel numbers for the Business page
+  if (process.env.GHL_TOKEN) {
+    await fetch(base + '/.netlify/functions/business-background', { method: 'POST', headers: { 'x-refresh-secret': secret }, signal: AbortSignal.timeout(20000) }).catch((e) => console.error('business refresh not queued', e.message));
+  }
   console.log('refresh queued for', clients.length, 'clients;', results.filter((r) => r.status === 'fulfilled').length, 'accepted');
 };
 
