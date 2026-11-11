@@ -14,6 +14,7 @@ function groupBy(kind, list) {
     if (list && list.indexOf(r.cid) < 0) return;
     var o = m[r.name];
     if (!o) { o = m[r.name] = { name: r.name, spend: 0, impr: 0, clicks: 0, views: 0, conv: 0, leads: 0, calls: 0, deals: 0, rev: 0 }; out.push(o); }
+    if (r.url && !o.url) o.url = r.url;
     KEYS.forEach(function (k) { o[k] += r[k]; });
   });
   return out;

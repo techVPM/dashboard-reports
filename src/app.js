@@ -142,7 +142,7 @@ function load() {
 
 /* ---------- events ---------- */
 root.addEventListener('click', function (e) {
-  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-ai],[data-page],[data-close],[data-burger],[data-scope],[data-ps]'); if (!t || !root.contains(t)) return;
+  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-ai],[data-lp],[data-page],[data-close],[data-burger],[data-scope],[data-ps]'); if (!t || !root.contains(t)) return;
   if (t.tagName === 'A') e.preventDefault();
   if (t.dataset.range) {
     var m = t.dataset.range;
@@ -166,6 +166,7 @@ root.addEventListener('click', function (e) {
   if (t.dataset.close) return closeVideo();
   if (t.dataset.vi) return openVideo(+t.dataset.vi);
   if (t.dataset.ai) return openLanding(+t.dataset.ai);
+  if (t.dataset.lp) return openPage(t.dataset.lp, t.dataset.lp.replace(/^https?:\/\//i, ""), "Landing page", null);
   if (t.dataset.ps) { var q2 = t.dataset.ps.split(':'); S.ps[q2[0]] = +q2[1]; S.page[q2[0]] = 0; return render(); }
   if (t.dataset.page) { var pp = t.dataset.page.split(':'); S.page[pp[0]] = Math.max(0, (S.page[pp[0]] || 0) + (+pp[1])); return render(); }
   if (t.dataset.go) return go(t.dataset.go);
@@ -208,7 +209,7 @@ function showModal(title, meta, kind, foot) {
   document.getElementById('mmeta').textContent = meta;
   document.getElementById('mlink').innerHTML = foot || '';
   v.className = kind; v.innerHTML = '';
-  m.classList.toggle('wide', kind === 'mpage');
+  m.classList.toggle('wide', kind.indexOf('mpage') === 0);
   lastFocus = document.activeElement; m.hidden = false;
   try { m.querySelector('.mclose').focus(); } catch (e) { /* ignore */ }
   return v;
@@ -235,11 +236,38 @@ function openVideo(i) {
 }
 function openLanding(i) {
   var r = (ITEMS.ads || [])[i]; if (!r) return;
-  var ok = r.url && /^https?:\/\/[^\s"'<>]+$/i.test(r.url);
-  var meta = [r.camp, r.h2].filter(Boolean).join(' · ');
-  var v = showModal(r.h1, meta, 'mpage', ok ? '<a class="mbtn" href="' + esc(r.url) + '" target="_blank" rel="noopener noreferrer">Open landing page in a new window</a> <span>' + esc(r.url.replace(/^https?:\/\//i, '')) + '. Some websites do not allow a preview here. If it stays blank, use the button.</span>' : '');
-  if (ok) frame(v, r.url, 'Landing page for ' + r.h1, '');
-  else v.innerHTML = '<div class="mnone">No landing page address was returned for this ad.</div>';
+  openPage(r.url, r.h1, [r.camp, r.h2].filter(Boolean).join(' · '), r);
+}
+// An ad (what it looks like on Google) and a picture of the page it sends people to.
+// Most websites refuse to load inside another site, so the page is shown as a screenshot, with a button to open it.
+function openPage(url, title, meta, ad) {
+  var ok = url && /^https?:\/\/[^\s"'<>]+$/i.test(url);
+  var v = showModal(title || url.replace(/^https?:\/\//i, ''), meta || '', 'mpage shot', ok ? '<a class="mbtn" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">Open landing page</a> <span>' + esc(url.replace(/^https?:\/\//i, '')) + '</span>' : '');
+  var html = ad ? adPreview(ad, url) : '';
+  if (!ok) { v.innerHTML = html + '<div class="lmsg">No landing page address was returned' + (ad ? ' for this ad.' : '.') + '</div>'; return; }
+  if (MODE === 'demo') { v.innerHTML = html + '<div class="lmsg">Sample data has no real landing page. In a live report a picture of the page shows here.</div>'; return; }
+  v.innerHTML = html + '<div class="lshot"><p class="lcap">Landing page</p><div class="lbox"><img alt="Picture of the landing page" loading="eager"><div class="lmsg">Loading a picture of the page</div></div></div>';
+  var img = v.querySelector('.lshot img'), msg = v.querySelector('.lshot .lmsg'), tries = 0;
+  var src = function () { return 'https://s.wordpress.com/mshots/v1/' + encodeURIComponent(url) + '?w=1280&h=1600' + (tries ? '&t=' + tries : ''); };
+  img.onload = function () {
+    // the picture service answers with a small placeholder while it takes a new picture, so check again shortly
+    if (img.naturalWidth < 1000 && tries < 6) { tries++; msg.textContent = 'Taking a fresh picture of the page, a few seconds'; setTimeout(function () { if (img.isConnected) img.src = src(); }, 2500); return; }
+    if (img.naturalWidth < 1000) { msg.textContent = 'The picture is not ready yet. Use Open landing page.'; return; }
+    msg.remove(); img.classList.add('on');
+  };
+  img.onerror = function () { msg.textContent = 'No picture available for this page. Use Open landing page.'; };
+  img.src = src();
+}
+function adPreview(r, url) {
+  if (!r.heads || !r.heads.length) return '';
+  var host = '', path = (r.path || []).filter(Boolean);
+  try { host = new URL(url).hostname.replace(/^www\./, ''); } catch (e) { host = ''; }
+  var h = r.heads.slice(0, 3).map(esc).join(' | '), d = (r.descs || []).slice(0, 2).map(esc).join(' ');
+  var all = '<details class="gall"><summary>All ' + r.heads.length + ' headlines' + (r.descs.length ? ' and ' + r.descs.length + ' descriptions' : '') + '</summary><div class="gcols"><ol>' + r.heads.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol>' +
+    (r.descs.length ? '<ol>' + r.descs.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol>' : '') + '</div></details>';
+  return '<div class="gwrap"><p class="lcap">The ad on Google <span>One example. Google mixes the headlines and descriptions for each search.</span></p><div class="gad"><span class="gsp">Sponsored</span>' +
+    (host ? '<div class="gurl">' + esc(host) + (path.length ? ' › ' + path.map(esc).join(' › ') : '') + '</div>' : '') +
+    '<div class="gtitle">' + h + '</div>' + (d ? '<p class="gd">' + d + '</p>' : '') + '</div>' + all + '</div>';
 }
 function closeVideo() {
   var m = document.getElementById('modal'); if (m.hidden) return;

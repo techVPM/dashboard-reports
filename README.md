@@ -250,6 +250,8 @@ After a deploy, Netlify also builds `dist/ghl-embed.html`. It is the same report
 
 ## Version notes
 
+- **2.5**: Clicking a Search ad now shows the ad the way it looks on Google (headlines, descriptions, web address), with a list of all its headlines and descriptions, and a picture of its landing page. Most websites block being shown inside another site, which is why the old preview was blank, so the page is now a picture taken by a free screenshot service (WordPress mShots), plus an Open landing page button. Landing pages are clickable on the Ads and creative tab and inside each campaign. Saved reports rebuild at the next 10 am refresh, or press Load now.
+
 - **2.4**:
   - Business: recurring revenue over the last 12 months with new, lost and fee changes; cash coming in over the next 30, 60 and 90 days; why clients leave; best client sources; retention by start quarter; churn shown with counts, for example 44% (4 of 9).
   - Creative Hub: watch curve at 25, 50, 75 and 100% in the video popup; a Show filter for new this week, running, paused and underfunded winners; running or paused and live since on every video; an Underfunded winners box.

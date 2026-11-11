@@ -85,7 +85,7 @@ function buildItems(rows, camps, mode) {
     defs.forEach((d, j) => {
       const dealsJ = out.deals[j];
       items[kind].push({
-        campaign_id: c.id, name: d[0], detail: d[1] || '', ...(kind === 'ads' ? { url: 'https://example.com/free-call' } : {}), ...extra,
+        campaign_id: c.id, name: d[0], detail: d[1] || '', ...(kind === 'ads' ? { url: 'https://example.com/free-call', headlines: d[0].split(' | ').concat(['Coach by Chris', 'Free 20-Minute Strategy Call']), descriptions: ['Quit drinking without willpower or labels. A simple plan that fits your real life.', 'Talk to a coach who has been there. Book your free call today.'], path: ['quit', 'free-call'] } : {}), ...(kind === 'landing' ? { url: 'https://' + d[0] } : {}), ...extra,
         spend: r2((T.spend * d[2]) / ssum), impressions: out.impressions[j], clicks: out.clicks[j], views: out.views[j],
         conversions: out.conversions[j], leads: out.leads[j], calls: out.calls[j], deals: dealsJ, revenue: dealsJ * 2400,
       });

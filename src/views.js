@@ -177,6 +177,13 @@ function adTable(rows, showCamp) {
   if (showCamp) cols.push({ k: 'camp', l: 'Campaign', v: function (r) { return r.camp; }, f: function (r) { return esc(r.camp); } });
   return tbl('ads', cols.concat(outCols(), trafficCols(), verdictCol('item', thrItem())), rows, null, AD_PAGE);
 }
+function lpTable(id, rows) {
+  if (!S.sort[id]) S.sort[id] = ['spend', -1];
+  var cols = [{ k: 'name', l: 'Landing page', nm: 1, v: function (r) { return r.name; }, f: function (r) {
+    return r.url && /^https?:\/\//i.test(r.url) ? '<button type="button" class="ad adbtn" data-lp="' + esc(r.url) + '" aria-label="View landing page: ' + esc(r.name) + '"><b>' + esc(r.name) + '</b><em>View landing page</em></button>' : '<b>' + esc(r.name) + '</b>';
+  } }].concat(outCols(), trafficCols());
+  return tbl(id, cols, rows);
+}
 function termTable(id, label, rows) {
   var cols = [{ k: 'name', l: label, nm: 1, v: function (r) { return r.name; }, f: function (r) { return '<b>' + esc(r.name) + '</b>' + (r.detail ? '<br><span class="tag">' + esc(r.detail) + '</span>' : ''); } }];
   cols.push({ k: 'camp', l: 'Campaign', v: function (r) { return r.camp; }, f: function (r) { return esc(r.camp); } });
@@ -403,8 +410,7 @@ function vCreative() {
   }
   var lp = groupBy('landing', ids());
   if (lp.length) {
-    var lcols = [{ k: 'name', l: 'Landing page', nm: 1, v: function (r) { return r.name; }, f: function (r) { return '<b>' + esc(r.name) + '</b>'; } }].concat(outCols(), trafficCols());
-    out += panel('Landing pages', 'Where clicks land', tbl('landing', lcols, lp));
+    out += panel('Landing pages', 'Where clicks land. Click one to see it.', lpTable('landing', lp));
   }
   if (S.team && kw.length) out += panel('Keywords <span class="pill early">Team view</span>', 'Top keywords by spend', termTable('keywords', 'Keyword', kw));
   if (S.team && tm.length) out += panel('Search terms <span class="pill early">Team view</span>', 'The searches that triggered your ads, highest spend first. Google hides low-volume terms, so this is only part of Search spend.', termTable('terms', 'Search term', tm));
@@ -435,7 +441,9 @@ function vDetail() {
   function mine(k) { return (ITEMS[k] || []).filter(function (r) { return r.cid === c.id; }); }
   var au = mine('audiences'), vi = mine('videos'), ad = mine('ads'), kw = mine('keywords'), tm = mine('terms');
   if (vi.length) out += panel('Videos', 'Creative inside this campaign', vidTable(vi, false));
-  if (ad.length) out += panel('Ads', 'Ads inside this campaign', adTable(ad, false));
+  if (ad.length) out += panel('Ads', 'Ads inside this campaign. Click one to see the ad and its landing page.', adTable(ad, false));
+  var lpc = groupBy('landing', [c.id]);
+  if (lpc.length) out += panel('Landing pages', 'Where clicks from this campaign land', lpTable('landing-d', lpc));
   if (S.team && kw.length) out += panel('Keywords <span class="pill early">Team view</span>', 'Top keywords by spend', termTable('keywords-d', 'Keyword', kw));
   if (S.team && tm.length) out += panel('Search terms <span class="pill early">Team view</span>', 'Highest-spend searches', termTable('terms-d', 'Search term', tm));
   if (au.length) out += panel('Audiences', 'Top segments by spend, 5 at a time', audTable(au, false, true));

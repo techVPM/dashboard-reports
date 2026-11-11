@@ -4,7 +4,7 @@
 
 import { applyGoals } from './goals.mjs';
 // Bump when the Google queries change, so saved reports built by older code are rebuilt.
-export const DATA_VERSION = '2.4';
+export const DATA_VERSION = '2.5';
 
 const DAY = 864e5;
 export const addDays = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * DAY).toISOString().slice(0, 10);
@@ -168,10 +168,19 @@ const DEVICE = { MOBILE: 'Mobile', DESKTOP: 'Desktop', TABLET: 'Tablet', CONNECT
 export const ITEM_SPECS = [
   {
     kind: 'ads', from: 'ad_group_ad', video: true, order: true, limit: 100,
-    fields: ['campaign.id', 'ad_group.id', 'ad_group.name', 'ad_group_ad.ad.id', 'ad_group_ad.ad.name', 'ad_group_ad.ad.type', 'ad_group_ad.ad.final_urls', 'ad_group_ad.ad.responsive_search_ad.headlines'],
+    fields: ['campaign.id', 'ad_group.id', 'ad_group.name', 'ad_group_ad.ad.id', 'ad_group_ad.ad.name', 'ad_group_ad.ad.type', 'ad_group_ad.ad.final_urls', 'ad_group_ad.ad.responsive_search_ad.headlines',
+      'ad_group_ad.ad.responsive_search_ad.descriptions', 'ad_group_ad.ad.responsive_search_ad.path1', 'ad_group_ad.ad.responsive_search_ad.path2'],
     keyFields: ['ad_group.id', 'ad_group_ad.ad.id'],
     key: (r) => r.adGroup?.id + '|' + r.adGroupAd?.ad?.id,
-    item: (r) => ({ campaign_id: r.campaign.id, name: adName(r), detail: r.adGroup?.name || '', url: String(r.adGroupAd?.ad?.finalUrls?.[0] || '') }),
+    item: (r) => {
+      const ad = r.adGroupAd?.ad || {}, rsa = ad.responsiveSearchAd || {};
+      const texts = (a, n) => (Array.isArray(a) ? a : []).map((x) => String(x?.text || '').trim()).filter(Boolean).slice(0, n);
+      const it = { campaign_id: r.campaign.id, name: adName(r), detail: r.adGroup?.name || '', url: String(ad.finalUrls?.[0] || '') };
+      // the words of a responsive search ad, so the report can show what the ad looks like on Google
+      const h = texts(rsa.headlines, 15), d = texts(rsa.descriptions, 4);
+      if (h.length) { it.headlines = h; it.descriptions = d; it.path = [rsa.path1, rsa.path2].filter(Boolean).map(String); }
+      return it;
+    },
   },
   {
     kind: 'videos', from: 'video', video: true, order: true, limit: 80, src: 'video',
@@ -251,7 +260,7 @@ export const ITEM_SPECS = [
     fields: ['campaign.id', 'landing_page_view.unexpanded_final_url'],
     keyFields: ['campaign.id', 'landing_page_view.unexpanded_final_url'],
     key: (r) => r.campaign?.id + '|' + r.landingPageView?.unexpandedFinalUrl,
-    item: (r) => ({ campaign_id: r.campaign.id, name: String(r.landingPageView?.unexpandedFinalUrl || '').replace(/^https?:\/\//, ''), detail: '' }),
+    item: (r) => { const u = String(r.landingPageView?.unexpandedFinalUrl || ''); return { campaign_id: r.campaign.id, name: u.replace(/^https?:\/\//, ''), detail: '', url: u }; },
   },
   {
     kind: 'hours', from: 'campaign',
