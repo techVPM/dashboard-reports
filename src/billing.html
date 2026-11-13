@@ -1,0 +1,398 @@
+<div class="vpm tm bz bl" id="vpm">
+<div class="wrap">
+  <header class="tbar">
+    <div class="brand">VIDEO POWER<span>MARKETING</span></div>
+    <div class="tbtns"><!--TABS:billing--><button type="button" class="tlink" id="out" hidden>Sign out</button></div>
+  </header>
+  <div class="thead">
+    <div><h1>Billing</h1><p class="sub" id="tsub">Invoices, payments and forecast, from the team's billing sheet.</p></div>
+    <div class="tctl" id="tctl" hidden><a class="obtn" id="sheet" href="#" target="_blank" rel="noopener" hidden>Open the sheet</a><button type="button" class="obtn" id="refresh">Refresh from sheet</button></div>
+  </div>
+  <form class="panel gate" id="gate" hidden>
+    <h2>Team sign in</h2>
+    <p class="sub">Use the admin password (the ADMIN_PASSWORD setting in Netlify).</p>
+    <div class="grow"><input type="password" id="pw" autocomplete="current-password" aria-label="Password" placeholder="Password"><button class="mbtn" type="submit">Sign in</button></div>
+    <p class="err" id="gerr" hidden></p>
+  </form>
+  <div class="cprog" id="prog" hidden><div class="lbar"><i id="pfill"></i></div><p id="ptext">Reading the billing sheet</p></div>
+  <section id="main"><div class="panel"><p class="msg">Loading</p></div></section>
+  <div class="bmodal" id="bm" hidden role="dialog" aria-modal="true" aria-labelledby="bmt"><form class="bbox" id="bform" novalidate><div class="bhead"><h2 id="bmt"></h2><button type="button" class="tlink" data-close="1" aria-label="Close">Close</button></div><div id="bbody"></div><p class="err" id="berr" hidden></p><div class="bfoot"><button type="button" class="obtn" data-close="1">Cancel</button><button type="submit" class="mbtn" id="bsave">Save to sheet</button></div></form></div>
+</div>
+</div>
+<script>
+(function () {
+  'use strict';
+  var KEY = 'vpm_admin_key', pw = '';
+  try { pw = localStorage.getItem(KEY) || ''; } catch (e) { /* private mode */ }
+  var $ = function (id) { return document.getElementById(id); };
+  var SNAP = null, SAVED = 0, STALE = '', MONTH = null, LF = 'all', SORT = { line: ['amount', -1], cli: ['total', -1] }, PS = { line: 10, cli: 10, att: 5 }, PG = { line: 0, cli: 0, att: 0 };
+  var CALC = null, BK = '', VIEW = /edit/.test(location.hash) ? 'edit' : 'overview';
+  try { BK = localStorage.getItem('vpm_billing_key') || ''; } catch (e) { /* private mode */ }
+  var IST = ['Wait', 'Invoice Sent', 'Paid', 'Automatically', 'Needs Discussion', 'Do Not Send'], PST = ['Unpaid', 'Paid', 'Card Declined'], MET = ['GHL/Stripe', 'Bill', 'Quickbooks'], SVC = ['Ads Management', 'Video Production'];
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function money(v) { return v == null ? 'n/a' : (v < 0 ? '-' : '') + '$' + Math.round(Math.abs(v)).toLocaleString('en-US'); }
+  function int(v) { return v == null ? 'n/a' : Math.round(v).toLocaleString('en-US'); }
+  function pct(v) { return v == null ? 'n/a' : Math.round(v * 100) + '%'; }
+  function sm(v) { var a = Math.abs(v); return '$' + (a >= 1000 ? (a / 1000).toFixed(a >= 100000 ? 0 : 1).replace(/\.0$/, '') + 'k' : Math.round(a)); }
+  function dlab(s) { return s ? new Date(s + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : ''; }
+  function mlab(s, long) { return new Date(s + '-15T12:00:00Z').toLocaleDateString('en-US', { month: long ? 'long' : 'short', timeZone: 'UTC' }); }
+  function tile(label, value, sub, cls) { return '<div class="kpi' + (cls ? ' ' + cls : '') + '"><div class="l">' + label + '</div><div class="v">' + value + '</div>' + (sub ? '<div class="ksub">' + sub + '</div>' : '') + '</div>'; }
+
+  function pager(id, total) {
+    if (total <= 5) return '';
+    var size = PS[id], pages = Math.ceil(total / size), pg = Math.min(PG[id], pages - 1); PG[id] = pg;
+    return '<div class="pager"><span>Showing ' + (pg * size + 1) + ' to ' + Math.min(total, (pg + 1) * size) + ' of ' + total + '</span><div class="psize"><span>Show</span><div class="seg">' + [5, 10, 20].map(function (n) { return '<button type="button" data-ps="' + id + ':' + n + '" class="' + (size === n ? 'on' : '') + '">' + n + '</button>'; }).join('') + '</div><span>per page</span></div>' + (pages > 1 ? '<div><button type="button" data-pg="' + id + ':-1"' + (pg === 0 ? ' disabled' : '') + '>&lsaquo; Previous</button><span class="pn">Page ' + (pg + 1) + ' of ' + pages + '</span><button type="button" data-pg="' + id + ':1"' + (pg >= pages - 1 ? ' disabled' : '') + '>Next &rsaquo;</button></div>' : '') + '</div>';
+  }
+  function slice(id, rows) { var size = PS[id], pages = Math.max(1, Math.ceil(rows.length / size)); PG[id] = Math.min(PG[id], pages - 1); return rows.slice(PG[id] * size, PG[id] * size + size); }
+
+  function api(method) {
+    return fetch('/api/billing', { method: method || 'GET', headers: { 'x-admin-key': pw } }).then(function (r) { return r.json().then(function (j) { if (r.status === 401) throw { auth: 1 }; if (!r.ok) throw new Error(j.error || 'Failed'); return j; }); });
+  }
+  function gate(msg) { $('gate').hidden = false; $('main').innerHTML = ''; $('tctl').hidden = true; $('out').hidden = true; if (msg) { $('gerr').hidden = false; $('gerr').textContent = msg; } $('pw').focus(); }
+  $('gate').addEventListener('submit', function (e) { e.preventDefault(); pw = $('pw').value.trim(); if (!pw) return; try { localStorage.setItem(KEY, pw); } catch (er) { /* ignore */ } load(); });
+  $('out').addEventListener('click', function () { try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ } pw = ''; gate(); });
+  var ptimer = null;
+  function progress(on) {
+    clearInterval(ptimer); $('prog').hidden = !on; if (!on) return;
+    var t0 = Date.now(); $('pfill').style.width = '0%';
+    ptimer = setInterval(function () { var t = (Date.now() - t0) / 1000; $('pfill').style.width = (92 * (1 - Math.exp(-t / 3))).toFixed(1) + '%'; }, 150);
+  }
+  function load(method) {
+    if (!pw) return gate();
+    progress(true);
+    api(method).then(function (j) {
+      progress(false); SNAP = j.snap; SAVED = j.saved_at; STALE = j.stale || '';
+      if (!MONTH || !SNAP.months.some(function (m) { return m.month === MONTH; })) MONTH = SNAP.current || (SNAP.months[0] && SNAP.months[0].month) || null;
+      $('gate').hidden = true; $('gerr').hidden = true; $('out').hidden = false; $('tctl').hidden = false;
+      if (SNAP.sheet_url) { $('sheet').href = SNAP.sheet_url; $('sheet').hidden = false; }
+      draw();
+    }).catch(function (e) {
+      progress(false);
+      if (e && e.auth) return gate('That password did not work.');
+      $('tctl').hidden = false; $('out').hidden = false; $('gate').hidden = true;
+      $('main').innerHTML = '<div class="panel"><h2>Could not read the billing sheet</h2><p class="msg">' + esc(e.message) + '</p></div>';
+    });
+  }
+  $('refresh').addEventListener('click', function () { this.disabled = true; var b = this; load('POST'); setTimeout(function () { b.disabled = false; }, 3000); });
+
+  /* ---------- pieces ---------- */
+  // Invoiced per month, split by service. Placeholder months are faded and labelled.
+  function chart(months) {
+    var W = 560, H = 230, P = 34, top = 26, base = H - 34;
+    var max = Math.max.apply(null, months.map(function (m) { return m.invoiced; }).concat([1]));
+    var bw = Math.min(64, (W - P * 2) / months.length * 0.56), step = (W - P * 2) / months.length;
+    var Y = function (v) { return (v / max) * (base - top); };
+    var g = '<line x1="' + P + '" x2="' + (W - P) + '" y1="' + base + '" y2="' + base + '" class="axis"/>';
+    months.forEach(function (m, i) {
+      var x = P + step * i + step / 2, y = base, op = m.placeholder ? ' fill-opacity="0.35"' : '';
+      var tip = m.title + ': ' + money(m.invoiced) + ' invoiced (' + money(m.ads) + ' ads management, ' + money(m.video) + ' video' + (m.other ? ', ' + money(m.other) + ' other' : '') + '), ' + money(m.collected) + ' collected' + (m.placeholder ? '. Placeholder, not real yet.' : '');
+      g += '<g><title>' + esc(tip) + '</title><rect x="' + (x - step / 2).toFixed(1) + '" y="0" width="' + step.toFixed(1) + '" height="' + H + '" fill="transparent"/>';
+      [['ads', 'var(--c1)'], ['video', '#E0474C'], ['other', 'var(--muted)']].forEach(function (s) {
+        var h = Y(m[s[0]] || 0); if (h <= 0) return; y -= h;
+        g += '<rect x="' + (x - bw / 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + h.toFixed(1) + '" fill="' + s[1] + '"' + op + '/>';
+      });
+      if (m.collected && !m.placeholder) g += '<line x1="' + (x - bw / 2 - 6).toFixed(1) + '" x2="' + (x + bw / 2 + 6).toFixed(1) + '" y1="' + (base - Y(m.collected)).toFixed(1) + '" y2="' + (base - Y(m.collected)).toFixed(1) + '" stroke="var(--fg)" stroke-width="2.5" stroke-dasharray="4 3"/>';
+      g += '<text x="' + x.toFixed(1) + '" y="' + (base - Y(m.invoiced) - 7).toFixed(1) + '" text-anchor="middle" class="cv">' + sm(m.invoiced) + '</text>';
+      g += '<text x="' + x.toFixed(1) + '" y="' + (base + 16) + '" text-anchor="middle" class="cx">' + esc(mlab(m.month)) + '</text>';
+      if (m.placeholder) g += '<text x="' + x.toFixed(1) + '" y="' + (base + 29) + '" text-anchor="middle" class="cx ph">placeholder</text>';
+      g += '</g>';
+    });
+    return '<svg class="bchart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Invoiced by month">' + g + '</svg>' +
+      '<div class="mkey"><span><i style="background:var(--c1)"></i>Ads management</span><span><i style="background:#E0474C"></i>Video production</span><span><i style="background:var(--muted)"></i>Other</span><span><i class="dash"></i>Collected</span></div>';
+  }
+  function pocHtml(name, link) {
+    if (!name && !link) return '';
+    return '<br><small class="mut">' + (link ? '<a class="ghl" href="' + esc(link) + '" target="_blank" rel="noopener" title="Open this contact in GHL">' + esc(name || 'GHL contact') + ' <span class="gtag">GHL</span></a>' : esc(name)) + '</small>';
+  }
+  function pill(s, cls) { return s ? '<span class="pill ' + cls + '">' + esc(s) + '</span>' : ''; }
+  function payCls(l) { return /^paid$/i.test(l.payment_status) ? 'good' : /declin|fail/i.test(l.payment_status) ? 'bad' : /do not send/i.test(l.invoice_status) ? 'early' : 'warn'; }
+  function lineState(l) { return /do not send/i.test(l.invoice_status) ? 'nobill' : /^paid$/i.test(l.payment_status) ? 'paid' : l.amount > 0 ? 'unpaid' : 'nobill'; }
+
+  function sortRows(rows, s) {
+    var k = s[0], d = s[1];
+    return rows.slice().sort(function (a, b) { var x = a[k], y = b[k]; if (typeof x === 'string' || typeof y === 'string') return d * String(x || '').localeCompare(String(y || '')); return d * ((x == null ? -1e15 : x) - (y == null ? -1e15 : y)); });
+  }
+  function th(id, k, label, num) { var s = SORT[id], on = s[0] === k; return '<th class="' + (num ? 'n' : '') + '"' + (on ? ' aria-sort="' + (s[1] > 0 ? 'ascending' : 'descending') + '"' : '') + '><button type="button" data-sort="' + id + ':' + k + '">' + label + (on ? (s[1] > 0 ? ' ▲' : ' ▼') : '') + '</button></th>'; }
+
+  function linesPanel(M) {
+    var all = M ? M.lines : [].concat.apply([], SNAP.months.filter(function (m) { return !m.placeholder; }).map(function (m) { return m.lines.map(function (l) { return Object.assign({ month: m.month }, l); }); }));
+    var counts = { all: all.length, unpaid: 0, paid: 0, nobill: 0 };
+    all.forEach(function (l) { counts[lineState(l)]++; });
+    var rows = all.filter(function (l) { return LF === 'all' || lineState(l) === LF; });
+    rows = sortRows(rows, SORT.line);
+    var seg = '<div class="seg">' + [['all', 'All'], ['unpaid', 'Not paid'], ['paid', 'Paid'], ['nobill', 'Not billed']].map(function (o) { return '<button type="button" data-lf="' + o[0] + '" class="' + (LF === o[0] ? 'on' : '') + '">' + o[1] + ' <small>' + counts[o[0]] + '</small></button>'; }).join('') + '</div>';
+    var body = slice('line', rows).map(function (l) {
+      return '<tr><td class="nm"><b>' + esc(l.client) + '</b>' + pocHtml(l.poc, l.poc_link) + '</td>' + (M ? '' : '<td>' + esc(mlab(l.month)) + '</td>') + '<td>' + esc(l.service) + '</td><td class="n"><b>' + money(l.amount) + '</b></td><td>' + pill(l.invoice_status, /^paid$/i.test(l.invoice_status) ? 'good' : /do not send/i.test(l.invoice_status) ? 'early' : /needs/i.test(l.invoice_status) ? 'bad' : 'setup') + (l.invoice_date ? '<br><small class="mut">' + dlab(l.invoice_date) + '</small>' : '') + '</td><td>' + pill(l.payment_status, payCls(l)) + (l.method ? '<br><small class="mut">' + esc(l.method) + '</small>' : '') + '</td><td class="nt">' + esc(l.notes || '') + '</td>' + (SNAP.edit_enabled ? '<td class="act">' + (lineState(l) === 'unpaid' ? '<button type="button" class="obtn sm" data-paid="' + esc((l.month || MONTH) + '|' + l.row) + '">Mark paid</button>' : '') + '<button type="button" class="tlink" data-edit="' + esc((l.month || MONTH) + '|' + l.row) + '">Edit</button></td>' : '') + '</tr>';
+    }).join('');
+    var add = SNAP.edit_enabled && M ? '<button type="button" class="mbtn sm" data-add="' + esc(M.month) + '">Add a line</button>' : '';
+    var off = !SNAP.edit_enabled ? '<p class="sub">To edit from here, add a BILLING_EDIT_PASSWORD setting in Netlify. Until then, change billing in the sheet.</p>' : '<p class="sub">Changes save straight into the ' + (M ? esc(M.label || M.title) + ' tab of the ' : '') + 'sheet.</p>';
+    return '<div class="panel"><div class="ph2"><h2>' + (M ? esc(M.label || M.title) + ' invoices' : 'All invoices') + '</h2><div class="phr">' + add + seg + '</div></div>' + off + '<div class="tw"><table class="t bt"><thead><tr>' + th('line', 'client', 'Client') + (M ? '' : th('line', 'month', 'Month')) + th('line', 'service', 'Service') + th('line', 'amount', 'Amount', 1) + th('line', 'invoice_status', 'Invoice') + th('line', 'payment_status', 'Payment') + '<th>Notes</th>' + (SNAP.edit_enabled ? '<th></th>' : '') + '</tr></thead><tbody>' + (body || '<tr><td colspan="8" class="mut">Nothing here.</td></tr>') + '</tbody></table></div>' + pager('line', rows.length) + '</div>';
+  }
+  function clientsPanel() {
+    var rows = sortRows(SNAP.clients, SORT.cli), real = SNAP.months.filter(function (m) { return !m.placeholder; });
+    var body = slice('cli', rows).map(function (c) {
+      return '<tr><td class="nm"><b>' + esc(c.client) + '</b>' + (c.status ? ' <small class="mut">' + esc(c.status) + '</small>' : '') + pocHtml(c.poc, c.poc_link) + '</td><td class="n">' + int(c.months) + '</td><td class="n">' + money(c.ads) + '</td><td class="n">' + money(c.video) + '</td><td class="n"><b>' + money(c.total) + '</b></td><td class="n">' + money(c.avg) + '</td><td class="n">' + (c.outstanding ? '<span class="bad">' + money(c.outstanding) + '</span>' : '$0') + '</td><td>' + (c.last_paid ? dlab(c.last_paid) : '<span class="mut">none yet</span>') + '</td></tr>';
+    }).join('');
+    return '<div class="panel"><h2>By client</h2><p class="sub">' + (real.length ? esc(real[0].title) + ' to ' + esc(real[real.length - 1].title) : '') + ', placeholder months left out. Outstanding is invoiced but not marked paid.</p><div class="tw"><table class="t"><thead><tr>' + th('cli', 'client', 'Client') + th('cli', 'months', 'Months', 1) + th('cli', 'ads', 'Ads mgmt', 1) + th('cli', 'video', 'Video', 1) + th('cli', 'total', 'Total', 1) + th('cli', 'avg', 'Per month', 1) + th('cli', 'outstanding', 'Outstanding', 1) + th('cli', 'last_paid', 'Last paid') + '</tr></thead><tbody>' + (body || '<tr><td colspan="8" class="mut">No clients yet.</td></tr>') + '</tbody></table></div>' + pager('cli', rows.length) + '</div>';
+  }
+  function attentionPanel() {
+    var A = SNAP.attention || [];
+    if (!A.length) return '<div class="panel"><h2>Needs attention</h2><p class="msg small">Nothing overdue, declined or waiting to be sent.</p></div>';
+    var total = A.reduce(function (s, a) { return s + a.amount; }, 0);
+    return '<div class="panel"><h2>Needs attention <span class="acount">' + A.length + '</span></h2><p class="sub">' + money(total) + ' across card declines, invoices waiting to be sent, and invoices sent but not paid. From the month tabs, so mark them paid on the Edit invoices tab (or in the sheet) and they drop off.</p><ul class="alist">' +
+      slice('att', A).map(function (a) { return '<li class="' + a.level + '"><div class="ab"><b>' + esc(a.client) + ' · ' + money(a.amount) + '</b><span>' + esc(a.why) + '</span><small>' + esc(mlab(a.month)) + ' · ' + esc(a.service) + (a.notes ? ' · ' + esc(a.notes) : '') + '</small></div></li>'; }).join('') + '</ul>' + pager('att', A.length) + '</div>';
+  }
+  // Same inputs and math as the Growth Scenario Calculator on the sheet's Dashboard tab.
+  function calcPanel() {
+    if (!CALC) {
+      var real = SNAP.months.filter(function (m) { return !m.placeholder; }), last = real[real.length - 1];
+      var billed = last ? last.billed_clients : 0, avg = real.length ? SNAP.totals.invoiced / Math.max(1, real.reduce(function (s, m) { return s + m.billed_clients; }, 0)) : 5000;
+      CALC = { active: billed || 8, avg: Math.round((avg || 5000) / 100) * 100, add: 2, start: 4, churn: 0 };
+    }
+    var c = CALC, rows = [], n = c.active;
+    for (var m = 1; m <= 12; m++) {
+      if (m >= c.start) n = n + c.add - n * c.churn / 100;
+      rows.push([m, n, n * c.avg]);
+    }
+    var endRev = rows[11][2];
+    var f = function (k, l, step, suffix) { return '<label class="fld"><span>' + l + '</span><input type="number" min="0" step="' + step + '" data-calc="' + k + '" value="' + c[k] + '">' + (suffix ? '<em>' + suffix + '</em>' : '') + '</label>'; };
+    return '<div class="panel"><h2>Growth scenario</h2><p class="sub">What monthly revenue looks like if you add clients at a steady pace. Starts from this month\'s billed clients and your average invoice per client; change any number.</p>' +
+      '<div class="cgrid">' + f('active', 'Active clients now', 1) + f('avg', 'Revenue per client a month ($)', 100) + f('add', 'New clients a month', 1) + f('start', 'Growth starts in month', 1) + f('churn', 'Monthly churn (%)', 0.5) + '</div>' +
+      '<div class="ckpi">' + tile('Clients in 12 months', int(rows[11][1])) + tile('Monthly revenue then', money(endRev)) + tile('Run rate a year', money(endRev * 12)) + tile('Growth vs today', money(endRev - c.active * c.avg)) + '</div>' +
+      '<details class="ctab"><summary>Month by month</summary><div class="tw"><table class="t"><thead><tr><th>Month</th><th class="n">Clients</th><th class="n">Monthly revenue</th><th class="n">Run rate a year</th></tr></thead><tbody>' +
+      rows.map(function (r) { return '<tr><td>' + r[0] + '</td><td class="n">' + (Math.round(r[1] * 10) / 10) + '</td><td class="n">' + money(r[2]) + '</td><td class="n">' + money(r[2] * 12) + '</td></tr>'; }).join('') + '</tbody></table></div></details></div>';
+  }
+
+  /* ---------- month breakdown (Overview) ---------- */
+  function monthPanel(M) {
+    if (!M) return '';
+    var b = { paid: 0, open: 0, declined: 0, nobill: 0 };
+    M.lines.forEach(function (l) { var st = lineState(l); if (st === 'paid') b.paid += l.amount; else if (st === 'unpaid') { if (/declin|fail/i.test(l.payment_status)) b.declined += l.amount; else b.open += l.amount; } else b.nobill += l.amount || 0; });
+    var tot = b.paid + b.open + b.declined + b.nobill || 1;
+    var parts = [['paid', 'Paid', 'var(--c1)'], ['open', 'Waiting on payment', '#E9A23B'], ['declined', 'Card declined', '#E0474C'], ['nobill', 'Not billed', 'var(--line)']];
+    var bar = '<div class="sbar">' + parts.map(function (p) { var v = b[p[0]]; return v > 0 ? '<i style="width:' + (100 * v / tot).toFixed(2) + '%;background:' + p[2] + '" title="' + p[1] + ': ' + money(v) + '"></i>' : ''; }).join('') + '</div>' +
+      '<div class="mkey">' + parts.map(function (p) { return '<span><i style="background:' + p[2] + '"></i>' + p[1] + ' <b>' + money(b[p[0]]) + '</b></span>'; }).join('') + '</div>';
+    var by = {}; M.lines.forEach(function (l) { var k = l.client; by[k] = by[k] || { c: k, t: 0, p: 0 }; if (lineState(l) !== 'nobill') { by[k].t += l.amount; if (lineState(l) === 'paid') by[k].p += l.amount; } });
+    var top = Object.keys(by).map(function (k) { return by[k]; }).filter(function (x) { return x.t > 0; }).sort(function (a, c) { return c.t - a.t; });
+    var mx = top.length ? top[0].t : 1;
+    var rows = top.slice(0, 10).map(function (x) { return '<div class="cbar"><span class="cn">' + esc(x.c) + '</span><span class="ct"><i class="cp" style="width:' + (100 * x.p / mx).toFixed(2) + '%"></i><i class="co" style="width:' + (100 * (x.t - x.p) / mx).toFixed(2) + '%"></i></span><b>' + money(x.t) + '</b></div>'; }).join('');
+    var svc = [['Ads management', M.ads, 'var(--c1)'], ['Video production', M.video, '#E0474C'], ['Other', Math.max(0, (M.invoiced || 0) - (M.ads || 0) - (M.video || 0)), 'var(--muted)']];
+    var st = svc.reduce(function (a, x) { return a + x[1]; }, 0) || 1;
+    var svcBar = '<div class="sbar">' + svc.map(function (x) { return x[1] > 0 ? '<i style="width:' + (100 * x[1] / st).toFixed(2) + '%;background:' + x[2] + '" title="' + x[0] + ': ' + money(x[1]) + '"></i>' : ''; }).join('') + '</div><div class="mkey">' + svc.map(function (x) { return '<span><i style="background:' + x[2] + '"></i>' + x[0] + ' <b>' + money(x[1]) + '</b></span>'; }).join('') + '</div>';
+    return '<div class="two2"><div class="panel"><h2>Where ' + esc(M.label || M.title) + ' stands</h2><p class="sub">Every invoice line on the tab, by payment state.</p>' + bar + '<h2 class="h2b">By service</h2>' + svcBar + '</div>' +
+      '<div class="panel"><h2>' + esc(M.label || M.title) + ' by client</h2><p class="sub">Dark part is paid, light part is still owed.' + (top.length > 10 ? ' Top 10 of ' + top.length + '.' : '') + '</p>' + (rows || '<p class="mut">No billed lines yet.</p>') + '</div></div>';
+  }
+  function viewTabs() {
+    return '<div class="vtabs" role="tablist"><button type="button" role="tab" data-view="overview" aria-selected="' + (VIEW === 'overview') + '" class="' + (VIEW === 'overview' ? 'on' : '') + '">Overview</button><button type="button" role="tab" data-view="edit" aria-selected="' + (VIEW === 'edit') + '" class="' + (VIEW === 'edit' ? 'on' : '') + '">Edit invoices</button></div>';
+  }
+  function syncPanel() {
+    var ago = Math.max(0, Math.round((Date.now() - SAVED) / 60000));
+    return '<div class="panel syncp"><div><h2>Connection to the sheet</h2><p class="sub">Saves here go straight into the sheet. Changes made in the sheet show here after <b>Refresh from sheet</b> (or on their own within 2 minutes). Last read ' + (ago < 1 ? 'just now' : ago + ' min ago') + '.</p><p class="sub" id="chkres">' + (CHK ? CHK : '') + '</p></div>' + (SNAP.edit_enabled ? '<button type="button" class="obtn sm" data-check="1">Test the connection</button>' : '') + '</div>';
+  }
+  var CHK = '';
+  function yearsPanel() {
+    var YS = SNAP.years || [];
+    var rows = YS.map(function (y) { return '<li><b>' + y.year + '</b> · ' + (y.url ? '<a href="' + esc(y.url) + '" target="_blank" rel="noopener">' + esc(y.title || 'Open') + '</a>' : esc(y.title || 'Sample sheet')) + (y.error ? ' <span class="bad">Could not read it: ' + esc(y.error) + '</span>' : '') + (SNAP.edit_enabled && y !== YS[0] ? ' <button type="button" class="tlink" data-year="' + y.year + '">Change</button>' : '') + '</li>'; }).join('');
+    return '<div class="panel"><div class="ph2"><h2>Sheets by year</h2>' + (SNAP.edit_enabled ? '<button type="button" class="obtn sm" data-year="new">Add a year</button>' : '') + '</div><p class="sub">One billing sheet per year. December copies into the next year\'s sheet as January.</p><ul class="wl blog">' + rows + '</ul></div>';
+  }
+
+  /* ---------- editing ---------- */
+  function lineBy(k) {
+    var p = String(k).split('|'), m = SNAP.months.filter(function (x) { return x.month === p[0]; })[0]; if (!m) return null;
+    var l = m.lines.filter(function (x) { return String(x.row) === p[1]; })[0];
+    return l ? Object.assign({ tab: m.title, month: m.month, year: m.year }, l) : null;
+  }
+  function expectOf(l) { return { client: l.client, service: l.service, amount: l.amount }; }
+  function opts(list, cur) { var L = list.slice(); if (cur && L.indexOf(cur) < 0) L.unshift(cur); return L.map(function (v) { return '<option' + (v === cur ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join(''); }
+  function fld(label, html, wide) { return '<label class="fld' + (wide ? ' wide' : '') + '"><span>' + label + '</span>' + html + '</label>'; }
+  function inp(name, val, type, extra) { return '<input name="' + name + '" type="' + (type || 'text') + '" value="' + esc(val == null ? '' : val) + '"' + (extra || '') + '>'; }
+  function sel(name, list, cur, other) { return '<select name="' + name + '">' + (other ? '<option value="">' + other + '</option>' : '') + opts(list, cur) + '</select>'; }
+  var PENDING = null;
+  function openModal(title, html, onSave, saveLabel) {
+    $('bmt').textContent = title; $('bbody').innerHTML = html + (BK ? '' : fld('Billing password', '<input name="__bk" type="password" autocomplete="off" required>', 1) + '<p class="sub small">Asked once on this browser. It is the BILLING_EDIT_PASSWORD setting in Netlify.</p>');
+    $('berr').hidden = true; $('bsave').textContent = saveLabel || 'Save to sheet'; $('bsave').disabled = false; PENDING = onSave; $('bm').hidden = false;
+    var f = $('bbody').querySelector('input,select,textarea'); if (f) f.focus();
+  }
+  function closeModal() { $('bm').hidden = true; PENDING = null; }
+  $('bm').addEventListener('click', function (e) { if (e.target === $('bm') || e.target.closest('[data-close]')) closeModal(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('bm').hidden) closeModal(); });
+  $('bform').addEventListener('submit', function (e) {
+    e.preventDefault(); if (!PENDING) return;
+    var F = {}; Array.prototype.forEach.call($('bform').elements, function (el) { if (el.name) F[el.name] = el.value.trim(); });
+    if (F.__bk) { BK = F.__bk; try { localStorage.setItem('vpm_billing_key', BK); } catch (er) { /* ignore */ } }
+    var body = PENDING(F); if (!body) return;
+    save(body, null, true);
+  });
+  function bErr(m) { $('berr').textContent = m; $('berr').hidden = false; $('bsave').disabled = false; }
+  function save(body, note, inModal) {
+    if (!BK) { // quick actions ask for the billing password first
+      return openModal('Billing password', '', function () { return body; }, 'Continue');
+    }
+    if (inModal) { $('bsave').disabled = true; $('bsave').textContent = 'Saving'; }
+    progress(true); $('ptext').textContent = 'Saving to the billing sheet';
+    fetch('/api/billing', { method: 'POST', headers: { 'x-admin-key': pw, 'x-billing-key': BK, 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+      .then(function (x) {
+        progress(false); $('ptext').textContent = 'Reading the billing sheet';
+        if (x.r.status === 401 && x.j.billing_auth) { BK = ''; try { localStorage.removeItem('vpm_billing_key'); } catch (er) { /* ignore */ } if (inModal) { $('bbody').insertAdjacentHTML('beforeend', fld('Billing password', '<input name="__bk" type="password" autocomplete="off" required>', 1)); return bErr('That billing password did not work.'); } return openModal('Billing password', '<p class="err">That billing password did not work.</p>', function () { return body; }, 'Continue'); }
+        if (x.r.status === 401) return gate('That password did not work.');
+        if (!x.r.ok) { if (body.action === 'check') { CHK = '<span class="bad">Not working: ' + esc(x.j.error || 'unknown error') + '</span>'; draw(); } if (inModal) return bErr(x.j.error || 'Could not save.'); return alertBox(x.j.error || 'Could not save.'); }
+        SNAP = x.j.snap; SAVED = x.j.saved_at; STALE = '';
+        if (body.action === 'check') { var R = x.j.result || {}; CHK = 'Working. Read ' + R.tabs + ' tabs and did a test save on ' + esc(R.tab) + ' (a header cell written back unchanged, so nothing changed) at ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + '.'; closeModal(); draw(); return toast('The page can read and write the sheet'); }
+        if (body.action === 'next' && x.j.result && x.j.result.tab) { var nm = SNAP.months.filter(function (m) { return m.title === x.j.result.tab && (!x.j.result.year || m.year === x.j.result.year); })[0]; if (nm) MONTH = nm.month; }
+        closeModal(); draw(); toast(note || (body.action === 'year' ? 'Year sheets updated' : body.action === 'add' ? 'Added to the sheet' : body.action === 'next' ? 'New month tab created in the sheet' : x.j.result && x.j.result.changed === 0 ? 'Nothing changed' : 'Saved to the sheet'));
+      })
+      .catch(function () { progress(false); if (inModal) bErr('Could not reach the server. Nothing was saved.'); else alertBox('Could not reach the server. Nothing was saved.'); });
+  }
+  function toast(m) { var t = document.createElement('div'); t.className = 'btoast'; t.setAttribute('role', 'status'); t.textContent = m; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 3200); }
+  function alertBox(m) { openModal('Could not save', '<p class="err">' + esc(m) + '</p>', function () { closeModal(); return null; }, 'OK'); }
+  function editForm(l) {
+    if (!l) return;
+    openModal('Edit ' + l.client + ', ' + l.service, '<p class="sub">' + esc(l.tab) + ' tab, row ' + l.row + '.</p><div class="bgrid">' +
+      fld('Amount ($)', inp('amount', l.amount, 'number', ' min="0" step="0.01" required')) +
+      fld('Invoice status', sel('invoice_status', IST, l.invoice_status)) +
+      fld('Invoice date', inp('invoice_date', l.invoice_date || '', 'date')) +
+      fld('Payment status', sel('payment_status', PST, l.payment_status)) +
+      fld('Payment method', sel('method', MET, l.method, 'None')) +
+      fld('Monthly ad spend ($)', inp('ad_spend', l.ad_spend == null ? '' : l.ad_spend, 'number', ' min="0" step="0.01"')) +
+      fld('Invoice notes', '<textarea name="inv_notes" rows="2">' + esc(l.inv_notes || '') + '</textarea>', 1) +
+      fld('Additional notes', '<textarea name="add_notes" rows="2">' + esc(l.add_notes || '') + '</textarea>', 1) +
+      (l.first ? fld('Billing contact', inp('poc', l.poc || '')) + fld('GHL contact link', inp('poc_link', l.poc_link || '', 'url', ' placeholder="https://app.videopowermarketing.com/v2/location/..."')) : '') + '</div>' +
+      (l.first ? '' : '<p class="sub small">The billing contact and GHL link are on this client\'s first line.</p>'),
+      function (F) {
+        if (F.amount === '' || !(Number(F.amount) >= 0)) { bErr('Enter the amount in dollars (0 or more).'); return null; }
+        if (F.poc_link && !/^https:\/\//i.test(F.poc_link)) { bErr('The GHL contact link should start with https://'); return null; }
+        var set = { amount: Number(F.amount), invoice_status: F.invoice_status, invoice_date: F.invoice_date, payment_status: F.payment_status, method: F.method, ad_spend: F.ad_spend === '' ? '' : Number(F.ad_spend), inv_notes: F.inv_notes, add_notes: F.add_notes };
+        if (l.first) { set.poc = F.poc; set.poc_link = F.poc_link; }
+        return { action: 'update', year: l.year, tab: l.tab, row: l.row, expect: expectOf(l), set: set };
+      });
+  }
+  function addForm(month) {
+    var m = SNAP.months.filter(function (x) { return x.month === month; })[0]; if (!m) return;
+    var on = {}; m.lines.forEach(function (l) { on[l.client.toLowerCase()] = 1; });
+    var D = SNAP.directory || [], here = D.filter(function (c) { return on[c.client.toLowerCase()]; }), other = D.filter(function (c) { return !on[c.client.toLowerCase()]; });
+    var o2 = function (c) { return '<option value="' + D.indexOf(c) + '">' + esc(c.client) + '</option>'; };
+    openModal('Add a line to ' + (m.label || m.title), '<p class="sub">Clients come from the billing sheet (every month tab), not from GHL.</p><div class="bgrid">' +
+      fld('Client', '<select name="client" id="addcli"><option value="__new">New client</option>' + (here.length ? '<optgroup label="On the ' + esc(m.label || m.title) + ' tab">' + here.map(o2).join('') + '</optgroup>' : '') + (other.length ? '<optgroup label="From other months">' + other.map(o2).join('') + '</optgroup>' : '') + '</select>') +
+      '<label class="fld" id="nnf"><span>New client name</span>' + inp('new_name', '') + '</label>' +
+      '<label class="fld" id="pocf"><span>Billing contact</span>' + inp('poc', '') + '</label>' +
+      '<label class="fld" id="lnkf"><span>GHL contact link</span>' + inp('poc_link', '', 'url', ' placeholder="https://app.videopowermarketing.com/v2/location/..."') + '</label>' +
+      fld('Service', '<select name="service">' + opts(SVC.concat(['Other']), 'Ads Management') + '</select>') +
+      fld('Amount ($)', inp('amount', '', 'number', ' min="0" step="0.01" required')) +
+      fld('Invoice status', sel('invoice_status', IST, 'Wait')) +
+      fld('Invoice date', inp('invoice_date', '', 'date')) +
+      fld('Payment status', sel('payment_status', PST, 'Unpaid')) +
+      fld('Payment method', sel('method', MET, 'GHL/Stripe', 'None')) +
+      fld('Invoice notes', '<textarea name="inv_notes" rows="2"></textarea>', 1) + '</div><p class="sub">A line for a client already on the tab goes right under their other lines. A new client goes under the last row.</p>',
+      function (F) {
+        var C = F.client === '__new' ? null : D[+F.client], client = C ? C.client : F.new_name;
+        if (!client) { bErr('Enter the new client name, or pick a client.'); return null; }
+        if (F.amount === '' || !(Number(F.amount) >= 0)) { bErr('Enter the amount in dollars (0 or more).'); return null; }
+        if (F.poc_link && !/^https:\/\//i.test(F.poc_link)) { bErr('The GHL contact link should start with https://'); return null; }
+        return { action: 'add', year: m.year, tab: m.title, line: { client: client, poc: F.poc, poc_link: F.poc_link, client_status: C ? (C.status && !/^new$/i.test(C.status) ? C.status : 'Active') : 'New', service: F.service, amount: Number(F.amount), invoice_status: F.invoice_status, invoice_date: F.invoice_date, payment_status: F.payment_status, method: F.method, inv_notes: F.inv_notes } };
+      }, 'Add to sheet');
+    // picking a client fills in their contact and GHL link from the sheet; clients already on the tab keep theirs
+    var sync = function () {
+      var v = $('addcli').value, C = v === '__new' ? null : D[+v], isHere = C && on[C.client.toLowerCase()];
+      $('nnf').hidden = !!C; $('pocf').hidden = !!isHere; $('lnkf').hidden = !!isHere;
+      var f = $('bform').elements; f.poc.value = C ? C.poc || '' : ''; f.poc_link.value = C ? C.poc_link || '' : '';
+    };
+    $('addcli').addEventListener('change', sync); sync();
+  }
+  function nextForm() {
+    var NX = SNAP.next_month; if (!NX) return;
+    if (NX.needs_sheet) return yearForm(NX.year);
+    var cross = NX.year !== NX.from_year, NL = NX.label || NX.title;
+    openModal(NX.exists ? 'Rebuild ' + NL + ' from ' + NX.from : 'Start ' + NL + ' from ' + NX.from,
+      (cross ? '<p class="warnline">' + esc(NL) + ' goes into the ' + NX.year + ' sheet, not this one.</p>' : '') +
+      '<p>This copies the <b>' + esc(NX.from) + '</b> tab to a new <b>' + esc(NX.title) + '</b> tab, moves every invoice date one month forward, and sets payments to Unpaid and invoice status to Wait (Do Not Send and Automatically stay as they are).</p>' +
+      (NX.exists ? '<p class="warnline">The current ' + esc(NX.title) + ' tab is not deleted. It is renamed to "' + esc(NX.title) + ' (old, with today\'s date)" so you can check it and delete it in the sheet yourself.</p>' : ''),
+      function () { return { action: 'next', from: NX.from, year: NX.from_year }; }, NX.exists ? 'Rebuild ' + NL : 'Create ' + NL);
+  }
+  function yearForm(year) {
+    var YS = SNAP.years || [], first = YS[0] ? YS[0].year : new Date().getFullYear(), y = year || (YS.length ? YS[YS.length - 1].year + 1 : first + 1);
+    var cur = YS.filter(function (x) { return x.year === y; })[0];
+    openModal('Sheet for ' + y, '<p class="sub">Each year has its own copy of the billing sheet. Paste the ' + y + ' sheet\'s link and the page reads it alongside the others. Leave it empty to stop reading it.</p><div class="bgrid">' +
+      fld('Year', inp('year', y, 'number', ' min="' + (first + 1) + '" step="1"')) +
+      fld('Google Sheets link', inp('link', cur && cur.url ? cur.url : '', 'url', ' placeholder="https://docs.google.com/spreadsheets/d/..."'), 1) + '</div>',
+      function (F) { return { action: 'year', year: Number(F.year), link: F.link }; }, 'Save');
+  }
+
+  function draw() {
+    var S = SNAP, M = S.months.filter(function (m) { return m.month === MONTH; })[0] || null;
+    var YS = S.years || [], cy = M ? YS.filter(function (y) { return y.year === M.year; })[0] : null, surl = (M && M.sheet_url) || S.sheet_url;
+    if (surl) { $('sheet').href = surl; $('sheet').hidden = false; $('sheet').textContent = YS.length > 1 && M ? 'Open the ' + M.year + ' sheet' : 'Open the sheet'; }
+    if (YS.length > 1) { $('tsub').innerHTML = 'From ' + YS.map(function (y) { return y.url ? '<a href="' + esc(y.url) + '" target="_blank" rel="noopener">' + esc(y.title || y.year + ' sheet') + '</a>' : esc(y.title || String(y.year)); }).join(' and ') + '. Read ' + new Date(SAVED).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + '.'; } else
+    $('tsub').innerHTML = 'From ' + (S.sheet_url ? '<a href="' + esc(S.sheet_url) + '" target="_blank" rel="noopener">' + esc(S.title || 'the billing sheet') + '</a>' : esc(S.title || 'the billing sheet')) + '. Read ' + new Date(SAVED).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + '.';
+    if (!S.months.length) { $('main').innerHTML = '<div class="panel"><p class="msg">No month tabs found from the start month on. Tabs need to be named by month, like October 2026.</p></div>'; return; }
+    var chips = '<div class="mchips" role="tablist">' + S.months.map(function (m) { return '<button type="button" role="tab" data-m="' + m.month + '" class="' + (MONTH === m.month ? 'on' : '') + (m.placeholder ? ' ph' : '') + '" aria-selected="' + (MONTH === m.month) + '">' + esc(m.label || m.title) + (m.state === 'current' ? ' <i>this month</i>' : m.placeholder ? ' <i>placeholder</i>' : '') + '</button>'; }).join('') + '<button type="button" role="tab" data-m="all" class="' + (MONTH === 'all' ? 'on' : '') + '" aria-selected="' + (MONTH === 'all') + '">All months</button></div>';
+    var NX = S.next_month, nextBtn = S.edit_enabled && NX ? '<button type="button" class="obtn sm nextm" data-next="' + esc(NX.from) + '">' + (NX.needs_sheet ? 'Add the ' + NX.year + ' sheet' : (NX.exists ? 'Rebuild ' : 'Start ') + esc(NX.label || NX.title) + ' from ' + esc(NX.from)) + '</button>' : '';
+    chips = chips.replace('</div>', '') + nextBtn + '</div>';
+    var out = viewTabs() + (STALE ? '<div class="panel warnp"><p>Could not read the sheet just now, showing the copy from ' + esc(new Date(SAVED).toLocaleString('en-US')) + '. ' + esc(STALE) + '</p></div>' : '') + (VIEW === 'edit' ? chips : chips.replace(nextBtn, ''));
+    if (VIEW === 'edit') {
+      out += M ? '<div class="kpis bzk sm3">' + tile('Invoiced', money(M.invoiced), M.billed_clients + ' billed') + tile('Collected', M.placeholder ? '<span class="mut">n/a</span>' : money(M.collected), '') + tile('Outstanding', M.placeholder ? '<span class="mut">n/a</span>' : money(M.outstanding), '', M.outstanding > 0 && !M.placeholder ? 'bad' : '') + '</div>' : '';
+      out += syncPanel() + yearsPanel() + linesPanel(M) + logPanel();
+      $('main').innerHTML = out; return;
+    }
+    if (M) {
+      var paidPct = M.invoiced ? M.collected / M.invoiced : null;
+      if (M.placeholder) out += '<div class="panel warnp"><p><b>' + esc(M.label || M.title) + ' is a placeholder.</b> ' + (M.copied ? 'Its rows are a copy of another month (the invoice dates are from then), so these numbers are a rough forecast, not real billing.' : 'This month has not started, so these numbers are a forecast.') + '</p></div>';
+      out += '<div class="kpis bzk">' +
+        tile(M.placeholder ? 'Forecast to invoice' : 'Invoiced', money(M.invoiced), M.billed_clients + ' billed client' + (M.billed_clients === 1 ? '' : 's') + (M.summary && M.summary.new ? ', ' + M.summary.new + ' new' : '')) +
+        tile('Collected', M.placeholder ? '<span class="mut">n/a</span>' : money(M.collected), M.placeholder ? '' : pct(paidPct) + ' of invoiced', '') +
+        tile('Outstanding', M.placeholder ? '<span class="mut">n/a</span>' : money(M.outstanding), M.placeholder ? '' : M.failed ? money(M.failed) + ' card declined' : 'invoiced, not marked paid', M.outstanding > 0 && !M.placeholder ? 'bad' : '') +
+        tile('Client ad spend', money(M.ad_spend), M.ads ? 'fees ' + pct(M.ads / Math.max(1, M.ad_spend)) + ' of ad spend' : '') +
+        tile('Ads management', money(M.ads), M.invoiced ? pct(M.ads / M.invoiced) + ' of invoiced' : '') +
+        tile('Video production', money(M.video), M.invoiced ? pct(M.video / M.invoiced) + ' of invoiced' : '') +
+        tile('Avg per billed client', money(M.billed_clients ? M.invoiced / M.billed_clients : null), '') +
+        tile('Clients on the tab', int(M.clients), M.summary && M.summary.lost ? M.summary.lost + ' lost' : '') +
+        '</div>';
+    } else {
+      var T = S.totals;
+      out += '<div class="kpis bzk">' + tile('Invoiced', money(T.invoiced), T.months + ' month' + (T.months === 1 ? '' : 's') + ', placeholders left out') + tile('Collected', money(T.collected), T.invoiced ? pct(T.collected / T.invoiced) + ' of invoiced' : '') + tile('Outstanding', money(T.outstanding), '', T.outstanding > 0 ? 'bad' : '') + tile('Average month', money(T.avg_month), '') + '</div>';
+    }
+    out += '<div class="two2"><div class="panel"><h2>Invoiced by month</h2><p class="sub">Split by service. The dashed line is what was collected. Hover a month for the numbers.</p>' + chart(S.months) + '</div>' + attentionPanel() + '</div>';
+    out += monthPanel(M);
+    out += clientsPanel();
+    out += calcPanel();
+    if (S.warnings && S.warnings.length) out += '<div class="panel"><h2>Notes on the sheet</h2><ul class="wl">' + S.warnings.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></div>';
+    $('main').innerHTML = out;
+  }
+  function logPanel() {
+    var S = SNAP;
+    if (!(S.log && S.log.length)) return '<div class="panel"><h2>Recent changes from this page</h2><p class="mut">Nothing saved from this page yet.</p></div>';
+    return '<div class="panel"><h2>Recent changes from this page</h2><ul class="wl blog">' + S.log.slice(0, 10).map(function (g) {
+      var when = new Date(g.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      var what = g.action === 'add' ? 'Added ' + esc(g.service || 'a line') + ' for ' + esc(g.client) + ' (' + money(g.amount) + ')' : g.action === 'next' ? 'Started the ' + esc(g.tab) + ' tab from ' + esc(g.from) + (g.renamed ? ', old tab kept as "' + esc(g.renamed) + '"' : '') : 'Changed ' + esc(g.client) + ', ' + esc(g.service) + ': ' + Object.keys(g.changes || {}).map(function (k) { var c = g.changes[k]; return esc(k.replace(/_/g, ' ')) + ' ' + esc(c[0] || 'blank') + ' to ' + esc(c[1] || 'blank'); }).join('; ');
+      if (g.action === 'year') what = g.removed ? 'Stopped reading the ' + g.year + ' sheet' : 'Connected the ' + g.year + ' sheet' + (g.title ? ' (' + esc(g.title) + ')' : '');
+      var tl = (g.tab || '') + (g.year && g.tab && (SNAP.years || []).length > 1 ? ' ' + g.year : '');
+      return '<li><b>' + when + '</b> · ' + (tl ? esc(tl) + ' · ' : '') + what + '</li>';
+    }).join('') + '</ul></div>';
+  }
+
+  $('main').addEventListener('click', function (e) {
+    var t = e.target.closest('[data-m],[data-lf],[data-sort],[data-ps],[data-pg],[data-edit],[data-paid],[data-add],[data-next],[data-view],[data-check],[data-year]'); if (!t || !SNAP) return;
+    if (t.dataset.year) return yearForm(t.dataset.year === 'new' ? 0 : Number(t.dataset.year));
+    if (t.dataset.view) { VIEW = t.dataset.view; try { history.replaceState(null, '', VIEW === 'edit' ? '#edit' : location.pathname); } catch (er) { /* ignore */ } return draw(); }
+    if (t.dataset.check) { CHK = 'Checking'; draw(); return save({ action: 'check' }, null); }
+    if (t.dataset.edit) return editForm(lineBy(t.dataset.edit));
+    if (t.dataset.paid) { var L0 = lineBy(t.dataset.paid); if (!L0) return; return save({ action: 'update', year: L0.year, tab: L0.tab, row: L0.row, expect: expectOf(L0), set: { payment_status: 'Paid', invoice_status: /do not send/i.test(L0.invoice_status) ? L0.invoice_status : 'Paid' } }, 'Marked ' + L0.client + ' paid'); }
+    if (t.dataset.add) return addForm(t.dataset.add);
+    if (t.dataset.next) return nextForm();
+    if (t.dataset.m) { MONTH = t.dataset.m; PG.line = 0; return draw(); }
+    if (t.dataset.lf) { LF = t.dataset.lf; PG.line = 0; return draw(); }
+    if (t.dataset.sort) { var q = t.dataset.sort.split(':'), s = SORT[q[0]]; SORT[q[0]] = s[0] === q[1] ? [q[1], -s[1]] : [q[1], /client|service|status|month/.test(q[1]) ? 1 : -1]; PG[q[0]] = 0; return draw(); }
+    if (t.dataset.ps) { var p = t.dataset.ps.split(':'); PS[p[0]] = +p[1]; PG[p[0]] = 0; return draw(); }
+    if (t.dataset.pg) { var g = t.dataset.pg.split(':'); PG[g[0]] = Math.max(0, PG[g[0]] + +g[1]); return draw(); }
+  });
+  $('main').addEventListener('change', function (e) {
+    var k = e.target.dataset && e.target.dataset.calc; if (!k || !CALC) return;
+    var v = Number(e.target.value); if (!isFinite(v) || v < 0) v = 0;
+    if (k === 'start') v = Math.max(1, Math.min(12, Math.round(v)));
+    if (k === 'churn') v = Math.min(100, v);
+    CALC[k] = v; var y = window.scrollY; draw(); window.scrollTo(0, y);
+  });
+  load();
+})();
+</script>

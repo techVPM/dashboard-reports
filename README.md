@@ -248,7 +248,50 @@ After a deploy, Netlify also builds `dist/ghl-embed.html`. It is the same report
 - **Videos**, **Ads and searches**: creative, keywords, search terms (and themes), landing pages.
 - **Insights and actions**: what the numbers mean, recommended actions ranked High, Medium and Low, and things worth knowing (tracking gaps, revenue not connected, data delays).
 
+## Billing page (/billing)
+
+Reads the team's "Billing and Forecast" Google Sheet, read only. One tab per month (October, November, ...), header row with "Client Name", line items up to row 32. Months before BILLING_START are left out; a month that has not started, or a tab whose invoice dates are from another month (a copy), is shown as a placeholder and left out of totals. The page re-reads the sheet at most every 10 minutes, or when you press Refresh from sheet.
+
+One-time setup:
+1. In Google Cloud Console, open the same project as the Google Ads sign-in app (Ads Reporter). APIs and services, Library, search "Google Sheets API", Enable.
+2. Google Auth Platform, Audience: if the app says Testing and the user type is External, click Make internal (your Google Workspace accounts can then sign in, with no 7 day token expiry and no unverified app warning).
+3. Google Auth Platform, Clients, Create client: type Web application, name "Billing sheet reader", and under Authorized redirect URIs add `https://developers.google.com/oauthplayground`. Create, and keep the client ID and secret it shows. (The Google Ads client is a Desktop client, which the OAuth Playground cannot use.)
+4. Open https://developers.google.com/oauthplayground, click the gear, tick "Use your own OAuth credentials", paste the new client ID and secret.
+5. In Step 1, type `https://www.googleapis.com/auth/spreadsheets` in the box, click Authorize APIs, and sign in with a Google account that can edit the billing sheet. (This scope lets the page save changes. A token made with `spreadsheets.readonly` can still show the page, but saving will fail.)
+6. Click "Exchange authorization code for tokens" and copy the Refresh token.
+7. In Netlify, Environment variables, add `GOOGLE_SHEETS_CLIENT_ID`, `GOOGLE_SHEETS_CLIENT_SECRET`, `GOOGLE_SHEETS_REFRESH_TOKEN`, `BILLING_SHEET_ID` (the long id in the sheet's web address, between /d/ and /edit), and optionally `BILLING_START` (default 2026-10). Then Deploys, Trigger deploy.
+
+### Editing billing from the page (2.7)
+
+1. In Netlify, add a setting called `BILLING_EDIT_PASSWORD` with a password only the billing team knows. Without it the page stays read-only.
+2. Make sure `GOOGLE_SHEETS_REFRESH_TOKEN` was made with the `https://www.googleapis.com/auth/spreadsheets` scope (step 5 above), by an account with edit access to the sheet.
+3. On /billing you can now: edit a line (amount, statuses, date, method, ad spend, notes), mark a line paid, add a line (existing or new client), and start next month's tab from the current one. The first save asks for the billing password once per browser.
+4. Every save re-reads the row first. If the sheet changed underneath (rows added or moved), nothing is written and the page asks you to refresh.
+5. Starting a month that already has a tab never deletes it: the old tab is renamed "Month (old date)" so you can check it and delete it yourself.
+6. The last changes made from the page show under "Recent changes from this page".
+
+### A new year
+
+Each year has its own copy of the billing sheet. The 2027 sheet already exists ("2027 - VPM - Billing and Forecast - SHARED"), with a "January 2027" tab and the Dashboard tab pointed at January to March 2027. Month tabs in both sheets are named with the year, like "November 2026".
+
+1. On /billing, Edit invoices tab, "Sheets by year": click Add a year, pick the year, paste the sheet's link, Save. Nothing changes in Netlify.
+2. In late December, the "Rebuild January 2027 from December" button copies the final December tab into the 2027 sheet as January (the January there now is kept, renamed "January (old date)").
+3. The Google account behind GOOGLE_SHEETS_REFRESH_TOKEN needs edit access to every year's sheet.
+
 ## Version notes
+
+- **2.11.0**: Month tabs can be named with their year ("November 2026"), which both billing sheets now use. New month tabs are named the same way, and a tab named for a different year than its sheet is skipped. Plain names ("November") still work.
+
+- **2.10.0**: One sheet per year. Year sheets are added on the page (no Netlify change), the page reads every year together (months show as "January 2027" once there are two years), saves go to the right year's sheet, and December copies into the next year's sheet as January. "Start next month" now always offers the month after this one.
+
+- **2.9.0**: Billing reads the GHL contact link behind each Billing POC cell and shows the contact as a link (invoice table and By client). Add a line picks clients from every month tab of the sheet (never from GHL) and copies their contact and GHL link; new clients can be given a link. The Edit form can change a client's billing contact and link, written into the sheet as a normal link.
+
+- **2.8.0**: Billing is split into two tabs. Overview has the month numbers and graphs (where the month stands, by service, by client). Edit invoices has the table with Edit, Mark paid and Add a line, next month's tab, a Test the connection button that proves the page can read and write the sheet without changing anything, and the change log. Sheet edits now show on the page within 2 minutes.
+
+- **2.7.0**: Billing page can save into the sheet: edit lines, mark paid, add lines, start next month's tab, a change log, and a separate BILLING_EDIT_PASSWORD. Needs a sheets token with edit scope.
+
+- **2.6.1**: Billing can use its own Web sign-in client (GOOGLE_SHEETS_CLIENT_ID and GOOGLE_SHEETS_CLIENT_SECRET), because the Google Ads client is a Desktop client.
+- **2.6**: New Billing page at /billing, from the billing Google Sheet: invoiced, collected and outstanding by month, split into ads management and video production; a needs attention list (card declined, needs discussion, sent and not paid, date passed but not sent); every invoice line with filters; totals by client; and the growth scenario calculator from the sheet's Dashboard tab. Placeholder months (like December, copied from October) are labelled and left out of totals. Needs the one-time setup above.
 
 - **2.5**: Clicking a Search ad now shows the ad the way it looks on Google (headlines, descriptions, web address), with a list of all its headlines and descriptions, and a picture of its landing page. Most websites block being shown inside another site, which is why the old preview was blank, so the page is now a picture taken by a free screenshot service (WordPress mShots), plus an Open landing page button. Landing pages are clickable on the Ads and creative tab and inside each campaign. Saved reports rebuild at the next 10 am refresh, or press Load now.
 

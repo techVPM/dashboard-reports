@@ -515,3 +515,168 @@ test('a contact picked in admin links right away and beats a Google Ads ID match
   assert.equal(res.clients.find((r) => r.id === a.id).token, null);
   assert.equal(res.clients.find((r) => r.id === b.id).token, 'acme-3333');
 });
+
+/* ---------------- 2.6 billing ---------------- */
+import { parseMonth, computeBilling, money as bMoney, usDate } from '../netlify/lib/billing.mjs';
+import { demoBillingTabs } from '../netlify/lib/demo-billing.mjs';
+
+const HEAD26 = ['', 'Client Name', 'Billing POC', 'Start Date', 'Service Category', 'Monthly Ad Spend ', 'Invoice Amount ', 'Invoice Status', 'Invoice Date', 'Payment Status', 'Invoice Notes', 'Payment Method', 'Referral Partner (10%)', 'Status'];
+const top26 = [['', '', 'Monthly Summary'], ['', 'X', 'Total Active Clients: ', '3', 'Total Client Ad Spend: ', '$1,500.00', 'Average Monthly Client Value:', '', 'New Clients', '1'], ['', 'Y', 'Total Revenue Invoice: ', '$12,500', '', '', '', '', 'Lost Clients', '0'], [], []];
+
+test('billing: money and dates from the sheet', () => {
+  assert.equal(bMoney('$5,000.00'), 5000); assert.equal(bMoney('0'), 0); assert.equal(bMoney(''), null); assert.equal(bMoney('–'), null);
+  assert.equal(usDate('11/2/2026'), '2026-11-02'); assert.equal(usDate('10/06/2026'), '2026-10-06'); assert.equal(usDate('–'), null);
+});
+
+test('billing: a month tab becomes line items, extra lines belong to the client above', () => {
+  const v = [...top26, HEAD26,
+    ['1', 'Acme ', 'Al', '', 'Ads Management', '$1,000.00', '$5,000', 'Paid', '11/2/2026', 'Paid', '', 'GHL/Stripe', '', 'Active'],
+    ['', '', '', '', 'Video Production', '', '$5,000', 'Wait', '11/19/2026', 'Unpaid', 'Payment 2 of 3'],
+    ['', '', '', '', '', '', '', '', '', '', 'note: charge on delivery'],
+    [],
+    ['2', 'Beta', 'Bo', '', 'Ads Management', '$500.00', '$2,500', 'Invoice Sent', '11/1/2026', 'Card Declined', '', 'GHL/Stripe', '', 'Active'],
+    ['3', 'Gamma', 'Gi', '', 'Ads Management', '$0.00', '0', 'Do Not Send', '–', 'Unpaid', '', 'Quickbooks', '', 'Active'],
+    [], [], [], [], [], [], [],
+    ['9', 'Old Copy', 'Zed', '', 'Ads Management', '', '$9,999', 'Paid', '10/1/2026', 'Paid'],
+  ];
+  const p = parseMonth(v, '2026-11');
+  assert.equal(p.lines.length, 4, 'rows after a long gap of empty rows are leftovers, not this month');
+  assert.equal(p.lines[1].client, 'Acme'); assert.equal(p.lines[1].service, 'Video Production');
+  assert.match(p.lines[1].notes, /charge on delivery/);
+  assert.equal(p.summary.invoiced, 12500); assert.equal(p.summary.new, 1);
+  const b = computeBilling({ tabs: [{ title: 'November', month: '2026-11', values: v }], now: Date.parse('2026-11-13T17:00:00Z') });
+  const m = b.months[0];
+  assert.equal(m.invoiced, 12500); assert.equal(m.collected, 5000); assert.equal(m.outstanding, 7500); assert.equal(m.failed, 2500);
+  assert.equal(m.ads, 7500); assert.equal(m.video, 5000); assert.equal(m.ad_spend, 1500);
+  assert.ok(b.attention.some((a) => a.client === 'Beta' && /declined/i.test(a.why)));
+  assert.ok(!b.attention.some((a) => a.client === 'Gamma'), 'Do Not Send is never an alert');
+  assert.ok(!b.attention.some((a) => a.client === 'Acme'), 'a future invoice date is not overdue');
+});
+
+test('billing: a copied tab and next month are placeholders, left out of totals', () => {
+  const now = Date.parse('2026-11-13T17:00:00Z');
+  const b = computeBilling({ tabs: demoBillingTabs(now), now });
+  const dec = b.months.find((m) => m.month === '2026-12');
+  assert.ok(dec.placeholder && dec.copied);
+  assert.ok(b.warnings.some((w) => /copy/.test(w)));
+  const real = b.months.filter((m) => !m.placeholder);
+  assert.equal(b.totals.invoiced, real.reduce((s, m) => s + m.invoiced, 0));
+  assert.equal(b.current, '2026-11');
+  const rev = computeBilling({ tabs: demoBillingTabs(now).reverse(), now });
+  assert.deepEqual(rev.months.map((m) => m.month), ['2026-10', '2026-11', '2026-12'], 'months read oldest to newest whatever the tab order');
+  assert.ok(b.clients.every((c) => c.total >= c.outstanding));
+});
+
+/* ---------- 2.7: saving from the Billing page into the sheet ---------- */
+import { memorySheet } from '../netlify/lib/sheets.mjs';
+import { updateLine, addLine, startNextMonth } from '../netlify/lib/billing-write.mjs';
+import { parseMonth as pm27 } from '../netlify/lib/billing.mjs';
+
+const NOW27 = Date.UTC(2026, 10, 13);
+const sheet27 = () => memorySheet(demoBillingTabs(NOW27).reverse());
+const env27 = { VPM_DEV: '1' };
+async function lines27(sheet, title) { const [v] = await sheet.read([{ tab: title, rows: 60 }]); return pm27(v, '').lines; }
+
+test('2.7 update writes only changed cells and refuses a stale row', async () => {
+  const s = sheet27(); const L = (await lines27(s, 'November')).find((l) => l.payment_status !== 'Paid' && !l.inv_notes);
+  const r = await updateLine({ env: env27, sheet: s, tab: 'November', row: L.row, expect: { client: L.client, service: L.service, amount: L.amount }, set: { payment_status: 'Paid', amount: L.amount, inv_notes: 'from test' } });
+  assert.equal(r.changed, 2);
+  const L2 = (await lines27(s, 'November')).find((x) => x.row === L.row);
+  assert.equal(L2.payment_status, 'Paid'); assert.equal(L2.inv_notes, 'from test');
+  await assert.rejects(updateLine({ env: env27, sheet: s, tab: 'November', row: L.row, expect: { client: 'Someone Else', service: L.service, amount: L.amount }, set: { payment_status: 'Unpaid' } }), (e) => e.status === 409);
+});
+
+test('2.7 add puts an existing client under their lines and a new client at the end', async () => {
+  const s = sheet27(); const before = await lines27(s, 'November');
+  const c = before[0].client;
+  const a = await addLine({ env: env27, sheet: s, tab: 'November', line: { client: c, service: 'Video Production', amount: 750 } });
+  const b = await addLine({ env: env27, sheet: s, tab: 'November', line: { client: 'Brand New LLC', service: 'Ads Management', amount: 1200, poc: 'Pat' } });
+  const after = await lines27(s, 'November');
+  assert.equal(after.length, before.length + 2);
+  assert.equal(after.find((l) => l.row === a.row).client, c);
+  const nl = after.find((l) => l.row === b.row);
+  assert.equal(nl.client, 'Brand New LLC'); assert.equal(nl.amount, 1200);
+  await assert.rejects(addLine({ env: env27, sheet: s, tab: 'November', line: { client: 'X', service: 'Ads Management', amount: -5 } }));
+});
+
+test('2.7 next month copies the tab, moves dates and keeps the old tab', async () => {
+  const s = sheet27();
+  const r = await startNextMonth({ env: env27, sheet: s, from: 'November', now: NOW27 });
+  assert.equal(r.tab, 'December'); assert.equal(r.renamed, 'December (old 2026-11-13)');
+  const titles = (await s.meta()).tabs.map((t) => t.title);
+  assert.ok(titles.includes('December (old 2026-11-13)'));
+  const dec = await lines27(s, 'December');
+  assert.ok(dec.filter((l) => l.invoice_date).every((l) => l.invoice_date.slice(0, 7) === '2026-12'));
+  assert.ok(dec.filter((l) => !/do not send/i.test(l.invoice_status)).every((l) => l.payment_status === 'Unpaid'));
+  await assert.rejects(startNextMonth({ env: env27, sheet: s, from: 'December', now: NOW27 }));
+});
+
+test('2.8 connection check writes the header back unchanged', async () => {
+  const { checkSheet } = await import('../netlify/lib/billing-write.mjs');
+  const s = sheet27(); const before = JSON.stringify(s.tabsRaw.map((t) => t.values));
+  const r = await checkSheet({ env: env27, sheet: s });
+  assert.equal(r.ok, true); assert.equal(r.tab, 'December');
+  assert.equal(JSON.stringify(s.tabsRaw.map((t) => t.values)), before);
+});
+
+test('2.9 GHL contact links come from the Billing POC cells and are copied for a client from another month', async () => {
+  const s = sheet27();
+  const { fetchBillingTabs, computeBilling } = await import('../netlify/lib/billing.mjs');
+  const got = await fetchBillingTabs({ env: { VPM_DEV: '1', BILLING_START: '2026-10' }, sheet: s });
+  const snap = computeBilling({ tabs: got.tabs, now: NOW27, title: 't', sheetId: '' });
+  const nov = snap.months.find((m) => m.title === 'November');
+  assert.match(nov.lines[0].poc_link, /^https:\/\/app\.gohighlevel\.com\//);
+  assert.ok(snap.directory.length >= 7 && snap.directory.every((c) => c.poc_link));
+  const oct = snap.directory.find((c) => !nov.lines.some((l) => l.client === c.client)) || snap.directory[0];
+  // a client from another month joins December with their contact and link
+  const r = await addLine({ env: env27, sheet: s, tab: 'December', line: { client: 'Maple Home Services', poc: 'Jo Reyes', poc_link: 'https://app.gohighlevel.com/x/1', client_status: 'Active', service: 'Ads Management', amount: 900 } });
+  const [lk] = await s.links([{ tab: 'December', col: 3, rows: 60 }]);
+  assert.equal(lk[r.row - 1], 'https://app.gohighlevel.com/x/1');
+  await assert.rejects(addLine({ env: env27, sheet: s, tab: 'December', line: { client: 'Bad Link Co', service: 'Ads Management', amount: 1, poc_link: 'javascript:alert(1)' } }));
+  // editing the contact on a first line updates the link
+  const L = (await lines27(s, 'November')).find((l) => l.first);
+  await updateLine({ env: env27, sheet: s, tab: 'November', row: L.row, expect: { client: L.client, service: L.service, amount: L.amount }, set: { poc: 'New Person', poc_link: 'https://app.gohighlevel.com/x/2' } });
+  const [lk2] = await s.links([{ tab: 'November', col: 3, rows: 60 }]);
+  assert.equal(lk2[L.row - 1], 'https://app.gohighlevel.com/x/2');
+  assert.ok(oct);
+});
+
+test('2.10 December copies into next year\'s sheet as January and keeps the old January', async () => {
+  const s26 = sheet27();
+  const { demoNextYear } = await import('../netlify/lib/demo-billing.mjs');
+  const s27 = memorySheet(demoNextYear(NOW27), 'next', 'next-id');
+  // fill December with real dates first, so the copy has December dates to move
+  await startNextMonth({ env: env27, sheet: s26, from: 'November', now: NOW27 });
+  const r = await startNextMonth({ env: env27, sheet: s26, target: s27, year: 2026, from: 'December', now: NOW27 });
+  assert.equal(r.tab, 'January'); assert.equal(r.year, 2027); assert.equal(r.renamed, 'January (old 2026-11-13)');
+  const titles = (await s27.meta()).tabs.map((t) => t.title);
+  assert.deepEqual(titles.slice(0, 3), ['Dashboard', 'January', 'January (old 2026-11-13)']);
+  const jan = await lines27(s27, 'January');
+  assert.ok(jan.length > 3);
+  assert.ok(jan.filter((l) => l.invoice_date).every((l) => l.invoice_date.slice(0, 7) === '2027-01'));
+  // the 2026 sheet is untouched apart from what it had
+  assert.ok(!(await s26.meta()).tabs.some((t) => t.title === 'January'));
+});
+
+test('2.10 sheet link parsing', async () => {
+  const { sheetIdFromLink } = await import('../netlify/lib/billing.mjs');
+  assert.equal(sheetIdFromLink('https://docs.google.com/spreadsheets/d/13Q_2uLLL73_ZdTVPOqCz4Vu1Vqh853h4I-5ZexiZ9dI/edit?gid=0'), '13Q_2uLLL73_ZdTVPOqCz4Vu1Vqh853h4I-5ZexiZ9dI');
+  assert.equal(sheetIdFromLink('not a link'), '');
+});
+
+test('2.11 month tabs named with the year ("November 2026") read and roll over in the same style', async () => {
+  const { monthOfTitle, yearOfTitle, fetchBillingTabs } = await import('../netlify/lib/billing.mjs');
+  assert.equal(monthOfTitle('November 2026'), 10); assert.equal(yearOfTitle('November 2026'), 2026);
+  assert.equal(monthOfTitle('November'), 10); assert.equal(yearOfTitle('November'), null);
+  assert.equal(monthOfTitle('November 2026 (old 2026-11-13)'), -1); assert.equal(monthOfTitle('Dashboard'), -1);
+  const tabs = demoBillingTabs(NOW27).reverse().map((t) => ({ ...t, title: t.title + ' 2026' }));
+  tabs.push({ title: 'January 2027', values: tabs[0].values }); // a stray tab for another year is skipped
+  const s = memorySheet(tabs);
+  const got = await fetchBillingTabs({ env: { VPM_DEV: '1', BILLING_START: '2026-10' }, sheet: s });
+  assert.deepEqual(got.tabs.map((t) => t.title).sort(), ['December 2026', 'November 2026', 'October 2026']);
+  const r = await startNextMonth({ env: env27, sheet: s, year: 2026, from: 'November 2026', now: NOW27 });
+  assert.equal(r.tab, 'December 2026'); assert.equal(r.renamed, 'December 2026 (old 2026-11-13)');
+  const s27 = memorySheet([{ title: 'Dashboard', values: [[]] }], 'n', 'n');
+  const r2 = await startNextMonth({ env: env27, sheet: s, target: s27, year: 2026, from: 'December 2026', now: NOW27 });
+  assert.equal(r2.tab, 'January 2027'); assert.equal(r2.year, 2027);
+});

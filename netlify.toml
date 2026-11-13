@@ -14,6 +14,11 @@
   status = 200
 
 [[redirects]]
+  from = "/billing"
+  to = "/billing.html"
+  status = 200
+
+[[redirects]]
   from = "/profile"
   to = "/profile.html"
   status = 200

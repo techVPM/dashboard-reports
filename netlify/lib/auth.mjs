@@ -18,5 +18,9 @@ export function isCreative(req, env = process.env) {
   const got = String(req.headers.get('x-admin-key') || '').trim();
   return isAdmin(req, env) || same(String(env.CREATIVE_PASSWORD || '').trim(), got);
 }
+// Saving to the billing sheet needs BILLING_EDIT_PASSWORD as well as the admin password.
+export function isBillingEditor(req, env = process.env) {
+  return isAdmin(req, env) && same(String(env.BILLING_EDIT_PASSWORD || '').trim(), String(req.headers.get('x-billing-key') || '').trim());
+}
 export const jsonRes = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow' } });
