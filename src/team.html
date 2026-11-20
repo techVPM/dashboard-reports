@@ -39,7 +39,7 @@
   var KEY = 'vpm_admin_key', VKEY = 'vpm_team_view', pw = '', VIEW = 'cards';
   try { pw = localStorage.getItem(KEY) || ''; VIEW = localStorage.getItem(VKEY) || 'cards'; } catch (e) { /* private mode */ }
   var $ = function (id) { return document.getElementById(id); };
-  var ALLAL = false, SCOPE = 'default', ROWS = [], INACTIVE = 0, FILT = 'all', OPEN = {}, RANGE = { mode: '30', from: '', to: '' }, GEN = 0;
+  var ALLAL = false, SCOPE = 'default', ROWS = [], CHECKINS = [], INACTIVE = 0, FILT = 'all', OPEN = {}, RANGE = { mode: '30', from: '', to: '' }, GEN = 0;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function money(v) { return v == null ? 'n/a' : '$' + Math.round(v).toLocaleString('en-US'); }
   function money2(v) { return v == null ? 'n/a' : '$' + (v >= 1000 ? Math.round(v).toLocaleString('en-US') : v.toFixed(2)); }
@@ -85,6 +85,7 @@
     api('/api/team?days=' + (RANGE.mode === 'custom' ? 30 : RANGE.mode) + '&scope=' + SCOPE).then(function (j) {
       if (gen !== GEN) return;
       $('gate').hidden = true; $('gerr').hidden = true; $('out').hidden = false; INACTIVE = j.inactive || 0;
+      CHECKINS = j.checkins || [];
       if (RANGE.mode !== 'custom') { ROWS = j.clients; return draw(); }
       ROWS = j.clients.map(function (r) { return { token: r.token, name: r.name, customer_id: r.customer_id, report_url: r.report_url, ads_url: r.ads_url, missing: true, loading: true, why: 'Loading', checks: [], overall: 'none' }; });
       draw();
@@ -212,6 +213,10 @@
     $('alerts').hidden = !AL.length;
     var lim = ALLAL ? AL.length : (innerWidth < 760 ? 4 : 8);
     $('alerts').innerHTML = AL.length ? '<div class="panel"><h2>Alerts <span class="acount">' + AL.length + '</span></h2><ul class="alist">' + AL.slice(0, lim).map(function (x) { return '<li class="' + x.a.level + '"><button type="button" data-open="' + esc(x.r.token) + '"><b>' + esc(x.r.name) + '</b><span>' + esc(x.a.text) + '</span></button></li>'; }).join('') + '</ul>' + (AL.length > lim ? '<button type="button" class="tlink amore" data-allal="1">Show all ' + AL.length + ' alerts</button>' : ALLAL && AL.length > 4 ? '<button type="button" class="tlink amore" data-allal="1">Show fewer</button>' : '') + '</div>' : '';
+    if (CHECKINS.length) {
+      $('alerts').hidden = false;
+      $('alerts').insertAdjacentHTML('afterbegin', '<div class="panel ckin"><h2>Check-in reports due <span class="acount">' + CHECKINS.length + '</span></h2><ul class="alist">' + CHECKINS.map(function (c) { return '<li class="' + (c.overdue ? 'bad' : 'warn') + '"><a href="/journey?c=' + encodeURIComponent(c.token) + '"><b>' + esc(c.name) + '</b><span>' + esc(c.label) + ' report ' + (c.overdue ? 'was due ' : 'due ') + esc(dlab(c.due)) + '. Open the journey to make it.</span></a></li>'; }).join('') + '</ul></div>');
+    }
     var show = rows.filter(function (r) { return FILT === 'all' || r.overall === FILT || (FILT === 'nogoals' && r.overall === 'none') || (FILT === 'risk' && risky(r)); });
     if (FILT === 'risk') show.sort(function (a, b) { return (b.health ? b.health.points : 0) - (a.health ? a.health.points : 0); });
     var L = $('list'); L.className = 'clist ' + VIEW;

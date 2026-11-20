@@ -1,0 +1,266 @@
+<div class="vpm tm jr" id="vpm">
+<div class="wrap">
+  <header class="tbar">
+    <div class="brand">VIDEO POWER<span>MARKETING</span></div>
+    <div class="tbtns"><!--TABS:journey--><button type="button" class="tlink" id="out" hidden>Sign out</button></div>
+  </header>
+  <div class="thead">
+    <div><h1>Client journey</h1><p class="sub" id="tsub">Milestones, wins and check-in reports for each client, from kickoff to the first year.</p></div>
+    <div class="tctl" id="tctl" hidden><select id="cli" aria-label="Client"></select><a class="obtn" id="cview" href="#" target="_blank" rel="noopener">Open client view</a></div>
+  </div>
+  <form class="panel gate" id="gate" hidden>
+    <h2>Team sign in</h2>
+    <p class="sub">Use the admin password (the ADMIN_PASSWORD setting in Netlify).</p>
+    <div class="grow"><input type="password" id="pw" autocomplete="current-password" aria-label="Password" placeholder="Password"><button class="mbtn" type="submit">Sign in</button></div>
+    <p class="err" id="gerr" hidden></p>
+  </form>
+  <section id="main"><div class="panel"><p class="msg">Loading</p></div></section>
+  <div class="bmodal" id="bm" hidden role="dialog" aria-modal="true" aria-labelledby="bmt"><form class="bbox" id="bform" novalidate><div class="bhead"><h2 id="bmt"></h2><button type="button" class="tlink" data-close="1" aria-label="Close">Close</button></div><div id="bbody"></div><p class="err" id="berr" hidden></p><div class="bfoot" id="bfoot"><button type="button" class="obtn" data-close="1">Cancel</button><button type="submit" class="mbtn" id="bsave">Save</button></div></form></div>
+</div>
+</div>
+<script>
+(function () {
+  'use strict';
+  var KEY = 'vpm_admin_key', pw = '';
+  try { pw = localStorage.getItem(KEY) || ''; } catch (e) { /* private mode */ }
+  var $ = function (id) { return document.getElementById(id); };
+  var LIST = null, TOKEN = '', J = null, BUSY = '', POLL = null, OPEN = {};
+  try { TOKEN = new URLSearchParams(location.search).get('c') || localStorage.getItem('vpm_journey_client') || ''; } catch (e) { /* ignore */ }
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function money(v) { return v == null ? 'n/a' : '$' + Math.round(v).toLocaleString('en-US'); }
+  function money2(v) { return v == null ? 'n/a' : '$' + (v >= 100 ? Math.round(v).toLocaleString('en-US') : v.toFixed(2)); }
+  function int(v) { return v == null ? 'n/a' : Math.round(v).toLocaleString('en-US'); }
+  function dlab(s) { return s ? new Date(s + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : ''; }
+  function tlab(ms) { return ms ? new Date(ms).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''; }
+  function sing(s) { return String(s || '').toLowerCase().replace(/s$/, ''); }
+
+  function api(method, qs, body) {
+    return fetch('/api/journey' + (qs || ''), { method: method, headers: { 'x-admin-key': pw, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (r.status === 401) { gate('That password did not work.'); throw new Error('auth'); } if (!r.ok) throw new Error(j.error || 'Something went wrong.'); return j; }); });
+  }
+  function gate(msg) { $('gate').hidden = false; $('main').innerHTML = ''; $('tctl').hidden = true; $('out').hidden = true; if (msg) { $('gerr').hidden = false; $('gerr').textContent = msg; } $('pw').focus(); }
+  $('gate').addEventListener('submit', function (e) { e.preventDefault(); pw = $('pw').value.trim(); if (!pw) return; try { localStorage.setItem(KEY, pw); } catch (er) { /* ignore */ } start(); });
+  $('out').addEventListener('click', function () { try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ } pw = ''; gate(); });
+
+  function start() {
+    if (!pw) return gate();
+    api('GET', '?list=1').then(function (j) {
+      LIST = j; $('gate').hidden = true; $('out').hidden = false; $('tctl').hidden = false;
+      if (!LIST.clients.some(function (c) { return c.token === TOKEN; })) TOKEN = LIST.clients.length ? LIST.clients[0].token : '';
+      $('cli').innerHTML = LIST.clients.map(function (c) { return '<option value="' + esc(c.token) + '"' + (c.token === TOKEN ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('');
+      load();
+    }).catch(function (e) { if (e.message !== 'auth') $('main').innerHTML = '<div class="panel"><p class="err">' + esc(e.message) + '</p></div>'; });
+  }
+  $('cli').addEventListener('change', function () { TOKEN = this.value; try { localStorage.setItem('vpm_journey_client', TOKEN); } catch (e) { /* ignore */ } J = null; OPEN = {}; load(); });
+  function load() {
+    if (!TOKEN) { $('main').innerHTML = '<div class="panel"><p class="msg">Add a client on the Clients and Goals page first.</p></div>'; return; }
+    $('cview').href = '/' + encodeURIComponent(TOKEN) + '#journey';
+    if (!J) $('main').innerHTML = '<div class="panel"><p class="msg">Loading the journey and the Google Ads history</p></div>';
+    try { history.replaceState(null, '', '?c=' + encodeURIComponent(TOKEN)); } catch (e) { /* ignore */ }
+    api('GET', '?token=' + encodeURIComponent(TOKEN)).then(function (j) { J = j; draw(); pollIfWorking(); })
+      .catch(function (e) { if (e.message !== 'auth') $('main').innerHTML = '<div class="panel"><p class="err">' + esc(e.message) + '</p></div>'; });
+  }
+  function pollIfWorking() {
+    clearTimeout(POLL);
+    var working = Object.keys(J.reports).some(function (d) { return J.reports[d].status === 'working'; });
+    if (working) POLL = setTimeout(load, 5000);
+  }
+  function post(body, msg) {
+    body.token = TOKEN;
+    BUSY = msg || 'Saving'; draw();
+    return api('POST', '', body).then(function () { BUSY = ''; toast('Saved'); load(); return true; })
+      .catch(function (e) { BUSY = ''; draw(); if (e.message !== 'auth') toast(e.message, 1); return false; });
+  }
+  function toast(m, bad) { var t = document.createElement('div'); t.className = 'btoast' + (bad ? ' bad' : ''); t.setAttribute('role', 'status'); t.textContent = m; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 3500); }
+
+  /* ---------- page ---------- */
+  function draw() {
+    if (!J) return;
+    var U = J.label || 'Results', out = '';
+    out += '<div class="panel jon' + (J.enabled ? ' on' : '') + '"><label class="sw"><input type="checkbox" data-enabled="1"' + (J.enabled ? ' checked' : '') + '><span class="swt" aria-hidden="true"></span><span><b>' + (J.enabled ? 'The client can see the "Our journey" tab' : 'Hidden from the client') + '</b><small>' + (J.enabled ? 'Switch off to hide the tab while you make changes.' : 'Switch on when this client is ready to see their journey in their report.') + '</small></span></label></div>';
+    out += '<div class="panel jset"><div class="jdates">' +
+      '<label class="fld"><span>Kickoff call</span><input type="date" id="kick" value="' + esc(J.kickoff) + '"></label>' +
+      '<label class="fld"><span>Ads launched' + (J.launch && !J.launch_set ? ' <em>(found in Google Ads)</em>' : '') + '</span><input type="date" id="launch" value="' + esc(J.launch_set ? J.launch : '') + '" placeholder="' + esc(J.launch) + '"></label>' +
+      '<button type="button" class="mbtn sm" id="savedates">Save dates</button></div>' +
+      (J.launch && !J.launch_set ? '<p class="sub small">Google Ads shows the first spend after kickoff on ' + esc(dlab(J.launch)) + '. Set a date only if VPM\'s launch was different.</p>' : '') +
+      (J.history_error ? '<p class="err">Could not read Google Ads: ' + esc(J.history_error) + '</p>' : '') +
+      (BUSY ? '<p class="sub"><b>' + esc(BUSY) + '…</b></p>' : '') + '</div>';
+    // settings: roadmap link and return in dollars
+    var V = J.value_settings || {};
+    out += '<div class="panel jopts"><div class="ph2"><h2>Settings for this client</h2></div><div class="jog">' +
+      '<div><label class="fld"><span>Link to their strategy and roadmap</span><input id="rmap" type="url" placeholder="https://docs.google.com/..." value="' + esc(J.roadmap_url || '') + '"></label><p class="small sub">Shows as a button on their journey, so the page points to the roadmap instead of repeating it.</p><button type="button" class="obtn sm" id="saverm">Save link</button></div>' +
+      '<div><label class="sw"><input type="checkbox" id="von"' + (V.on ? ' checked' : '') + '><span class="swt" aria-hidden="true"></span><span><b>Show return in dollars</b><small>Sales brought in by the ads, next to what was spent.</small></span></label>' +
+      '<div class="vsrc"' + (V.on ? '' : ' hidden') + '><label class="rad"><input type="radio" name="vsrc" value="ads"' + (V.source !== 'estimate' ? ' checked' : '') + '> Sales value recorded in Google Ads' + (J.ads_has_value ? '' : ' <em>(none recorded for this account)</em>') + '</label>' +
+      '<label class="rad"><input type="radio" name="vsrc" value="estimate"' + (V.source === 'estimate' ? ' checked' : '') + '> Estimate: results x close rate x average sale</label>' +
+      '<div class="jdates"><label class="fld"><span>Close rate %</span><input id="vcr" type="number" min="0" max="100" step="1" value="' + esc(V.close_rate || '') + '"></label><label class="fld"><span>Average sale $</span><input id="vas" type="number" min="0" step="1" value="' + esc(V.avg_sale || '') + '"></label></div>' +
+      (V.on && J.value ? '<p class="small sub">Showing ' + money(J.value.amount) + (J.value.estimate ? ' (estimate)' : '') + ', ' + J.value.roi.toFixed(1) + 'x return since launch.</p>' : V.on ? '<p class="small err">Not enough to calculate yet: ' + (V.source === 'estimate' ? 'add the close rate and average sale.' : 'Google Ads has no sales value for this account. Use the estimate instead.') + '</p>' : '') +
+      '</div><button type="button" class="obtn sm" id="saveval">Save</button></div></div></div>';
+    if (!J.kickoff && !J.launch) { $('main').innerHTML = out + '<div class="panel"><p class="msg">Set the kickoff date to start this client\'s journey. Wins and reports are found from that date on.</p></div>'; return; }
+    var T = J.totals;
+    if (T) out += '<div class="kpis bzk">' + tile('Since launch', money(T.spend), 'invested') + tile(U, int(T.results), 'since launch') + tile('Cost per ' + sing(U), money2(T.cost_per_result), J.goal && J.goal.cost ? 'goal ' + money2(J.goal.cost) : '') + tile('Days together', int((Date.parse(J.today) - Date.parse(J.kickoff || J.launch)) / 864e5), 'since ' + dlab(J.kickoff || J.launch)) + '</div>';
+
+    // reports
+    var ks = Object.keys(J.reports).sort(function (a, b) { return a - b; });
+    out += '<div class="panel"><div class="ph2"><h2>Check-in reports</h2></div><p class="sub">Each report compares its own period with the same length just before it: the 30-day report is the first 30 days against the 30 before, the 90-day report is 90 days against the 90 before, and so on. ' + (J.ai ? 'Written by Claude in the VPM voice, kept short; you can reword it before sharing. Download PDF gives a branded copy.' : 'Add ANTHROPIC_API_KEY in Netlify to have Claude write these; until then they use set phrases.') + ' The client sees a report only after you switch on Show to client.</p><div class="jrgrid">' + ks.map(function (d) {
+      var r = J.reports[d], due = r.due, ready = due && due <= J.today;
+      var head = '<b>' + esc(r.name) + '</b><span class="small">' + (due ? (ready ? 'Due ' : 'Due ') + esc(dlab(due)) : 'After launch') + '</span>';
+      if (r.status === 'working') return '<div class="jrc">' + head + '<p class="sub">Writing the report, about a minute…</p></div>';
+      if (r.text) return '<div class="jrc on">' + head + '<p class="jh">' + esc(r.text.headline) + '</p><p class="small sub">Made ' + esc(tlab(r.generated_at)) + (r.by === 'claude' ? ' by Claude' : ' from set phrases') + (r.early ? ' · early, before the checkpoint' : '') + (r.error ? ' · last try failed: ' + esc(r.error) : '') + '</p>' +
+        '<label class="tog"><input type="checkbox" data-share="' + d + '"' + (r.shared ? ' checked' : '') + '> Show to client</label>' +
+        '<div class="jrb"><button type="button" class="tlink" data-rview="' + d + '">Read</button><button type="button" class="tlink" data-redit="' + d + '">Reword</button><button type="button" class="tlink" data-rgen="' + d + '">Make again</button></div><a class="obtn sm" href="/jreport.html?token=' + encodeURIComponent(TOKEN) + '&d=' + d + '" target="_blank" rel="noopener">Download PDF</a></div>';
+      return '<div class="jrc">' + head + (r.status === 'error' || r.error ? '<p class="err small">' + esc(r.error || 'Failed') + '</p>' : '') + '<button type="button" class="' + (ready ? 'mbtn' : 'obtn') + ' sm" data-rgen="' + d + '"' + (J.launch ? '' : ' disabled') + '>' + (ready ? 'Generate report' : 'Generate early') + '</button></div>';
+    }).join('') + '</div></div>';
+
+    // wins
+    out += '<div class="panel"><div class="ph2"><h2>Wins</h2><button type="button" class="obtn sm" data-addwin="1">Add a win</button></div><p class="sub">Found in Google Ads automatically, plus any you add. Hide one to keep it off the client\'s page. The client sees the top four as Highlights, and all of them in Our story so far.</p>' +
+      (J.wins.length ? '<ul class="jwl">' + J.wins.map(function (w) {
+        return '<li class="' + (w.hidden ? 'off' : '') + '"><div><b>' + esc(w.title) + '</b><span class="small sub">' + esc(dlab(w.date)) + (w.auto ? ' · found automatically' : ' · added by the team') + (w.detail ? ' · ' + esc(w.detail) : '') + '</span></div>' +
+          (w.auto ? '<button type="button" class="tlink" data-winhide="' + esc(w.id) + '" data-h="' + (w.hidden ? 0 : 1) + '">' + (w.hidden ? 'Show to client' : 'Hide from client') + '</button>' : '<button type="button" class="tlink" data-cedit="' + esc(w.id) + '">Edit</button>') + '</li>';
+      }).join('') + '</ul>' : '<p class="msg">No wins yet. They appear here as the numbers come in.</p>') + '</div>';
+
+    // notes on the whole journey
+    var gn = J.notes;
+    out += '<div class="panel"><div class="ph2"><h2>Notes</h2><button type="button" class="obtn sm" data-note="">Add a note</button></div><p class="sub">Notes about the partnership as a whole. Notes on a single milestone are in the timeline below.</p>' + notesHtml(gn) + '</div>';
+
+    // timeline
+    out += '<div class="panel"><div class="ph2"><h2>Timeline</h2></div><p class="sub">The milestones a business owner cares about. Tick them off with a date; add anything else with "Add a step". <span class="eye on">Client</span> steps show on the client\'s page; <span class="eye">Team</span> steps stay here. Steps marked <em>auto</em> fill in from Google Ads or the reports unless you set them yourself.</p>';
+    J.phases.forEach(function (p) {
+      var its = J.items.filter(function (i) { return i.phase === p.id; });
+      var nd = its.filter(function (i) { return i.done; }).length;
+      var open = OPEN[p.id] != null ? OPEN[p.id] : nd < its.length;
+      out += '<div class="jphase"><button type="button" class="jpt" data-ph="' + p.id + '" aria-expanded="' + open + '"><b>' + esc(p.name) + '</b><span>' + esc(p.sub) + '</span><em>' + nd + ' of ' + its.length + ' done</em></button>';
+      if (open) out += '<ul class="jitems">' + its.map(itemHtml).join('') + '<li class="jadd"><button type="button" class="tlink" data-addev="' + p.id + '">+ Add a step or event (video shoot, Meta launch...)</button></li></ul>';
+      out += '</div>';
+    });
+    out += '</div>';
+    $('main').innerHTML = out;
+  }
+  function tile(l, v, s) { return '<div class="kpi"><div class="l">' + esc(l) + '</div><div class="v">' + v + '</div>' + (s ? '<div class="ksub">' + esc(s) + '</div>' : '') + '</div>'; }
+  function notesHtml(list) {
+    if (!list.length) return '';
+    return '<ul class="jnl">' + list.map(function (n) { return '<li><span class="eye' + (n.public ? ' on' : '') + '">' + (n.public ? 'Client' : 'Team') + '</span><p>' + esc(n.text).replace(/\n/g, '<br>') + '</p><span class="small sub">' + esc(tlab(n.at)) + '</span><button type="button" class="tlink" data-nedit="' + esc(n.id) + '">Edit</button></li>'; }).join('') + '</ul>';
+  }
+  function itemHtml(i) {
+    var auto = i.auto ? ' <em class="auto" title="Fills in automatically">auto</em>' : '';
+    return '<li class="jit' + (i.done ? ' done' : '') + '">' +
+      '<label class="chk"><input type="checkbox" data-done="' + esc(i.id) + '"' + (i.done ? ' checked' : '') + ' aria-label="Done: ' + esc(i.title) + '"></label>' +
+      '<div class="jmid"><b>' + esc(i.title) + '</b>' + auto +
+      (i.why ? '<span class="small sub">' + esc(i.why) + '</span>' : '') + (i.win ? ' <span class="pill good">win</span>' : '') +
+      '<span class="small sub">' + (i.date ? 'Done ' + esc(dlab(i.date)) : i.due ? 'Planned ' + esc(dlab(i.due)) : 'Not done yet') + (i.auto_date && i.date !== i.auto_date ? ' · Google Ads says ' + esc(dlab(i.auto_date)) : '') + '</span>' +
+      notesHtml(i.notes) + '</div>' +
+      '<div class="jact"><button type="button" class="eye' + (i.client ? ' on' : '') + '" data-vis="' + esc(i.id) + '" aria-pressed="' + i.client + '" title="Who sees this step">' + (i.client ? 'Client' : 'Team') + '</button>' +
+      '<button type="button" class="tlink" data-iedit="' + esc(i.id) + '">Edit</button><button type="button" class="tlink" data-note="' + esc(i.id) + '">+ Note</button></div></li>';
+  }
+  function itemBy(id) { return J.items.filter(function (i) { return i.id === id; })[0]; }
+
+  /* ---------- forms ---------- */
+  var PENDING = null;
+  function fld(label, html, wide) { return '<label class="fld' + (wide ? ' wide' : '') + '"><span>' + label + '</span>' + html + '</label>'; }
+  function openModal(title, html, onSave, label, extra) {
+    $('bmt').textContent = title; $('bbody').innerHTML = html; $('berr').hidden = true; $('bsave').textContent = label || 'Save'; $('bsave').hidden = !onSave;
+    $('bfoot').querySelector('.del') && $('bfoot').querySelector('.del').remove();
+    if (extra) $('bfoot').insertAdjacentHTML('afterbegin', extra);
+    PENDING = onSave; $('bm').hidden = false; var f = $('bbody').querySelector('input,textarea,select'); if (f) f.focus();
+  }
+  function closeModal() { $('bm').hidden = true; PENDING = null; }
+  $('bm').addEventListener('click', function (e) {
+    if (e.target === $('bm') || e.target.closest('[data-close]')) return closeModal();
+    var d = e.target.closest('[data-del]'); if (d) { var body = JSON.parse(d.dataset.del); closeModal(); post(body, 'Deleting'); }
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('bm').hidden) closeModal(); });
+  $('bform').addEventListener('submit', function (e) {
+    e.preventDefault(); if (!PENDING) return closeModal();
+    var F = {}; Array.prototype.forEach.call($('bform').elements, function (el) { if (el.name) F[el.name] = el.type === 'checkbox' ? el.checked : el.value.trim(); });
+    var body = PENDING(F); if (!body) return;
+    closeModal(); post(body);
+  });
+  function bErr(m) { $('berr').textContent = m; $('berr').hidden = false; return null; }
+  function chk(name, on, label) { return '<label class="tog"><input type="checkbox" name="' + name + '"' + (on ? ' checked' : '') + '> ' + label + '</label>'; }
+  function phaseSel(cur) { return '<select name="phase">' + J.phases.map(function (p) { return '<option value="' + p.id + '"' + (p.id === cur ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>'; }
+
+  function noteForm(item, n) {
+    var it = item ? itemBy(item) : null;
+    openModal(n ? 'Edit note' : 'Add a note' + (it ? ' to "' + it.title + '"' : ''), fld('Note', '<textarea name="text" rows="5">' + esc(n ? n.text : '') + '</textarea>', 1) + chk('public', n ? n.public : false, 'Show to client'),
+      function (F) { if (!F.text) return bErr('Write the note first.'); return { action: 'note', id: n ? n.id : undefined, item: item || null, text: F.text, public: F.public }; }, 'Save note',
+      n ? '<button type="button" class="obtn del" data-del=\'' + esc(JSON.stringify({ action: 'note_delete', id: n.id })) + '\'>Delete note</button>' : '');
+  }
+  function findNote(id) { var all = J.notes.slice(); J.items.forEach(function (i) { all = all.concat(i.notes.map(function (n) { return Object.assign({ item: i.id }, n); })); }); return all.filter(function (n) { return n.id === id; })[0]; }
+  function itemForm(i) {
+    if (i.custom) return customForm(i.phase, i);
+    openModal(i.title, '<div class="bgrid">' + fld('Name on the timeline', '<input name="title" value="' + esc(i.title) + '">', 1) +
+      fld('Date done', '<input type="date" name="date" value="' + esc(i.date) + '">') + fld('Planned for', '<input type="date" name="due" value="' + esc(i.due) + '">') + '</div>' +
+      chk('done', i.done, 'Done') + chk('client', i.client, 'Show to client') + (i.auto ? '<p class="sub small">This step fills in by itself' + (i.auto_date ? ' (' + dlab(i.auto_date) + ')' : '') + '. Saving here sets it yourself; clear the date and untick Done to go back to automatic.</p>' : ''),
+      function (F) { return { action: 'item', id: i.id, title: F.title, date: F.date, due: F.due, done: i.auto && !F.done && !F.date ? null : F.done, client: F.client }; });
+  }
+  function customForm(phase, c, win) {
+    var isWin = c ? c.win : !!win;
+    openModal(c ? 'Edit ' + (isWin ? 'win' : 'step') : isWin ? 'Add a win' : 'Add a step or event', '<div class="bgrid">' + fld('Title', '<input name="title" value="' + esc(c ? c.title : '') + '" placeholder="' + (isWin ? 'Biggest sales day ever' : 'Video shoot') + '">', 1) +
+      fld('Stage', phaseSel(c ? c.phase : phase)) + fld('Date', '<input type="date" name="date" value="' + esc(c ? c.date : isWin ? J.today : '') + '">') +
+      fld('Planned for (if not done yet)', '<input type="date" name="due" value="' + esc(c ? c.due : '') + '">') +
+      fld('Detail (shown under a win)', '<input name="detail" value="' + esc(c && c.detail || '') + '">', 1) + '</div>' +
+      chk('done', c ? c.done : true, 'Done') + chk('client', c ? c.client : true, 'Show to client') + chk('win', isWin, 'Count it as a win'),
+      function (F) { if (!F.title) return bErr('Give it a title.'); return { action: 'custom', id: c ? c.id : undefined, phase: F.phase, title: F.title, date: F.date, due: F.due, done: F.done, client: F.client, win: F.win, detail: F.detail }; }, 'Save',
+      c ? '<button type="button" class="obtn del" data-del=\'' + esc(JSON.stringify({ action: 'custom_delete', id: c.id })) + '\'>Delete</button>' : '');
+  }
+  function customById(id) { return J.items.filter(function (i) { return i.custom && i.id === id; })[0]; }
+
+  function reportHtml(r) {
+    var n = r.numbers || {}, b = n.before, c = n.now, t = r.text, U = n.label || J.label;
+    var row = function (l, f, k) { return '<tr><th>' + l + '</th><td>' + (b && b[k] != null ? f(b[k]) : 'n/a') + '</td><td>' + (c && c[k] != null ? f(c[k]) : 'n/a') + '</td></tr>'; };
+    var h = '<p><b>' + esc(t.headline) + '</b></p><p>' + esc(t.summary) + '</p>';
+    var P = n.period_days || 30, prevK = b && b.kind === 'previous';
+    if (b && c) h += '<table class="t jcmp"><thead><tr><th></th><th>' + (prevK ? 'The ' + P + ' days before' : b.kind === 'before' ? '30 days before kickoff' : 'First 30 days') + '<br><span class="small">' + dlab(b.from) + ' to ' + dlab(b.to) + '</span></th><th>' + (prevK ? 'Last ' + P + ' days' : 'Now') + '<br><span class="small">' + dlab(c.from) + ' to ' + dlab(c.to) + '</span></th></tr></thead><tbody>' +
+      row('Ad spend', money, 'spend') + row(esc(U), int, 'results') + row('Cost per ' + esc(sing(U)), money2, 'cost_per_result') + row('Clicks', int, 'clicks') + row('Cost per click', money2, 'cpc') + (c.roas || (b && b.roas) ? row('Return on ad spend', function (v) { return v.toFixed(1) + 'x'; }, 'roas') : '') + '</tbody></table>';
+    var sec = function (title, arr) { return arr && arr.length ? '<h3>' + title + '</h3><ul>' + arr.map(function (x) { return typeof x === 'string' ? '<li>' + esc(x) + '</li>' : '<li><b>' + esc(x.title) + '</b> ' + esc(x.detail) + '</li>'; }).join('') + '</ul>' : ''; };
+    return '<div class="jrpt">' + h + sec('Wins', t.wins) + sec('Where we can improve', t.opportunities) + sec('Next steps', t.next_steps) + '</div>';
+  }
+  var lines = function (arr) { return (arr || []).map(function (x) { return typeof x === 'string' ? x : x.title + (x.detail ? ': ' + x.detail : ''); }).join('\n'); };
+  var unlines = function (s, pairs) { return String(s || '').split('\n').map(function (l) { return l.trim(); }).filter(Boolean).map(function (l) { if (!pairs) return l; var i = l.indexOf(': '); return i > 0 ? { title: l.slice(0, i), detail: l.slice(i + 2) } : { title: l, detail: '' }; }); };
+  function reportEdit(d) {
+    var r = J.reports[d], t = r.text;
+    openModal('Reword the ' + r.name + ' report', fld('Headline', '<input name="headline" value="' + esc(t.headline) + '">', 1) + fld('Summary', '<textarea name="summary" rows="4">' + esc(t.summary) + '</textarea>', 1) +
+      fld('Wins (one per line, "Title: detail")', '<textarea name="wins" rows="5">' + esc(lines(t.wins)) + '</textarea>', 1) +
+      fld('Where we can improve (one per line)', '<textarea name="opportunities" rows="4">' + esc(lines(t.opportunities)) + '</textarea>', 1) +
+      fld('Next steps (one per line)', '<textarea name="next_steps" rows="4">' + esc(lines(t.next_steps)) + '</textarea>', 1),
+      function (F) { return { action: 'report_edit', days: Number(d), text: { headline: F.headline, summary: F.summary, wins: unlines(F.wins, 1), opportunities: unlines(F.opportunities, 1), next_steps: unlines(F.next_steps) } }; }, 'Save wording');
+  }
+
+  $('main').addEventListener('click', function (e) {
+    var t = e.target.closest('button'); if (!t || !J || BUSY) return;
+    var ds = t.dataset;
+    if (t.id === 'saverm') return post({ action: 'roadmap', url: $('rmap').value.trim() }, 'Saving link');
+    if (t.id === 'saveval') { var src = document.querySelector('input[name=vsrc]:checked'); return post({ action: 'value', value: { on: $('von').checked, source: src ? src.value : 'ads', close_rate: $('vcr').value, avg_sale: $('vas').value } }, 'Saving'); }
+    if (t.id === 'savedates') return post({ action: 'dates', kickoff: $('kick').value, launch: $('launch').value }, 'Saving dates');
+    if (ds.ph) { OPEN[ds.ph] = t.getAttribute('aria-expanded') !== 'true'; return draw(); }
+    if (ds.vis) { var i = itemBy(ds.vis); if (!i) return; return i.custom ? post({ action: 'custom', id: i.id, phase: i.phase, title: i.title, date: i.date, due: i.due, done: i.done, client: !i.client, win: i.win }) : post({ action: 'item', id: i.id, client: !i.client }); }
+    if (ds.iedit != null) { var it = itemBy(ds.iedit); if (it) itemForm(it); return; }
+    if (ds.note != null) return noteForm(ds.note || null);
+    if (ds.nedit) { var n = findNote(ds.nedit); if (n) noteForm(n.item || null, n); return; }
+    if (ds.addev) return customForm(ds.addev);
+    if (ds.addwin) return customForm('d30', null, true);
+    if (ds.cedit) { var c = customById(ds.cedit); if (c) customForm(c.phase, c); return; }
+    if (ds.winhide) return post({ action: 'win', id: ds.winhide, hidden: ds.h === '1' });
+    if (ds.rgen) {
+      var r = J.reports[ds.rgen];
+      if (r.text && !confirmed(ds.rgen)) return;
+      J.reports[ds.rgen] = Object.assign({}, r, { status: 'working' }); draw();
+      return api('POST', '', { token: TOKEN, action: 'report', days: Number(ds.rgen) }).then(function () { toast('Writing the report'); load(); }).catch(function (er) { toast(er.message, 1); load(); });
+    }
+    if (ds.rview) { var rr = J.reports[ds.rview]; openModal(rr.name + ' report', reportHtml(rr), null); return; }
+    if (ds.redit) return reportEdit(ds.redit);
+  });
+  var CONF = {};
+  function confirmed(d) { if (CONF[d]) { CONF[d] = 0; return true; } CONF[d] = 1; toast('Click Make again once more to replace the current report'); setTimeout(function () { CONF[d] = 0; }, 4000); return false; }
+  $('main').addEventListener('change', function (e) {
+    var t = e.target; if (!J) return;
+    if (t.dataset.done) { var i = itemBy(t.dataset.done); if (!i) return; var on = t.checked, today = J.today;
+      return i.custom ? post({ action: 'custom', id: i.id, phase: i.phase, title: i.title, date: on ? i.date || today : '', due: i.due, done: on, client: i.client, win: i.win, detail: i.detail })
+        : post({ action: 'item', id: i.id, done: on, date: on ? i.date || today : '' }); }
+    if (t.id === 'von') { var vs = document.querySelector('.vsrc'); if (vs) vs.hidden = !t.checked; return; }
+    if (t.dataset.enabled) return post({ action: 'enabled', enabled: t.checked }, t.checked ? 'Showing the tab' : 'Hiding the tab');
+    if (t.dataset.share) return post({ action: 'report_share', days: Number(t.dataset.share), shared: t.checked }, t.checked ? 'Sharing' : 'Hiding');
+  });
+  start();
+})();
+</script>

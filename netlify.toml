@@ -19,6 +19,11 @@
   status = 200
 
 [[redirects]]
+  from = "/journey"
+  to = "/journey.html"
+  status = 200
+
+[[redirects]]
   from = "/profile"
   to = "/profile.html"
   status = 200

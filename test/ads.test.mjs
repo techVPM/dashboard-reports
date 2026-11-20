@@ -38,6 +38,11 @@ function mockFetch({ failKinds = [], failCore = false } = {}) {
     if (q.includes('search_impression_share')) return respond([{ campaign: { id: '1' }, campaignBudget: { amountMicros: '25000000' }, metrics: { searchImpressionShare: 0.4, searchBudgetLostImpressionShare: 0.3, searchRankLostImpressionShare: 0.2 } }]);
     if (from === 'ad_group_ad' && !split) return respond([{ campaign: { id: '1' }, adGroup: { id: '9', name: 'AG' }, adGroupAd: { ad: { id: '77', type: 'RESPONSIVE_SEARCH_AD', responsiveSearchAd: { headlines: [{ text: 'Quit drinking' }, { text: 'Book a call' }] } } }, metrics: m(15, 150, 12, 3) }]);
     if (from === 'ad_group_ad' && split) return respond([{ campaign: { id: '1' }, adGroup: { id: '9' }, adGroupAd: { ad: { id: '77' } }, segments: { conversionActionName: 'Booked Call' }, metrics: { conversions: 2, conversionsValue: 2 } }]);
+    if (from === 'asset_group' && !split) return respond([{ campaign: { id: '3' }, assetGroup: { id: '55', name: 'Black Friday', finalUrls: ['https://shop.example.com/bf/{ignore}?utm_source=google&utm_campaign={campaignid}&ref=pmax'] }, metrics: m(40, 4000, 30, 5) }]);
+    if (from === 'asset_group' && split) return respond([{ campaign: { id: '3' }, assetGroup: { id: '55' }, segments: { conversionActionName: 'Booked Call' }, metrics: { conversions: 3, conversionsValue: 3 } }]);
+    if (from === 'asset_group_asset') return respond([
+      { assetGroup: { id: '55' }, assetGroupAsset: { fieldType: 'HEADLINE' }, asset: { textAsset: { text: 'Biggest sale of the year' } } },
+      { assetGroup: { id: '55' }, assetGroupAsset: { fieldType: 'DESCRIPTION' }, asset: { textAsset: { text: 'Natural mattresses, 40% off.' } } }]);
     if (from === 'campaign' && q.includes('segments.hour') && !split) return respond([
       { segments: { hour: 9 }, metrics: m(5, 50, 5, 1) }, { segments: { hour: 9 }, metrics: m(7, 70, 6, 1) }, { segments: { hour: 10 }, metrics: m(1, 10, 1, 0) }]);
     if (from === 'campaign' && q.includes('segments.device') && !split) return respond([{ campaign: { id: '1' }, segments: { device: 'MOBILE' }, metrics: m(20, 200, 20, 4) }]);
@@ -60,7 +65,7 @@ test('buildReport maps conversion actions, joins item splits and folds hours', a
   assert.equal(d.calls, 4);                 // only Booked Call counts, not Membership login
   assert.equal(r.campaigns.find((c) => c.id === '2').type, 'video');
   assert.equal(r.campaigns.find((c) => c.id === '1').lost_budget, 0.3);
-  const ad = r.items.ads[0];
+  const ad = r.items.ads.find((a) => a.campaign_id === '1');
   assert.equal(ad.name, 'Quit drinking | Book a call');
   assert.equal(ad.calls, 2);
   assert.equal(ad.spend, 15);
@@ -213,7 +218,7 @@ test('paused campaigns are left out of every query unless the client asks for th
   const f = mockFetch();
   await buildReport({ client: CLIENT, from: '2026-10-01', to: '2026-10-30', env: ENV, fetchFn: f });
   assert.ok(f.calls.length >= 10);
-  for (const c of f.calls) assert.match(c.q, /campaign\.status = 'ENABLED'/, c.q.slice(0, 80));
+  for (const c of f.calls) if (!/FROM asset_group_asset/.test(c.q)) assert.match(c.q, /campaign\.status = 'ENABLED'/, c.q.slice(0, 80)); // the asset text lookup only fills in groups already listed
   resetTokenCache();
   const g = mockFetch();
   await buildReport({ client: { ...CLIENT, include_paused: true }, from: '2026-10-01', to: '2026-10-30', env: ENV, fetchFn: g });
@@ -679,4 +684,104 @@ test('2.11 month tabs named with the year ("November 2026") read and roll over i
   const s27 = memorySheet([{ title: 'Dashboard', values: [[]] }], 'n', 'n');
   const r2 = await startNextMonth({ env: env27, sheet: s, target: s27, year: 2026, from: 'December 2026', now: NOW27 });
   assert.equal(r2.tab, 'January 2027'); assert.equal(r2.year, 2027);
+});
+
+test('3.0 Performance Max asset groups show as clickable ads with clean landing pages', async () => {
+  resetTokenCache();
+  const r = await buildReport({ client: CLIENT, from: '2026-10-01', to: '2026-10-30', env: ENV, fetchFn: mockFetch() });
+  const ag = r.items.ads.find((a) => a.name === 'Black Friday');
+  assert.ok(ag, 'asset group listed with the ads');
+  assert.equal(ag.url, 'https://shop.example.com/bf/?ref=pmax');
+  assert.equal(ag.calls, 3);
+  assert.deepEqual(ag.headlines, ['Biggest sale of the year']);
+  assert.equal(ag.ag, undefined);
+  assert.equal(r.meta.warnings.length, 0);
+  // if Google refuses the asset group query, nothing breaks and no warning shows
+  resetTokenCache();
+  const r2 = await buildReport({ client: CLIENT, from: '2026-10-01', to: '2026-10-30', env: ENV, fetchFn: mockFetch({ failKinds: ['asset_group', 'asset_group_asset'] }) });
+  assert.ok(!r2.items.ads.some((a) => a.name === 'Black Friday'));
+  assert.equal(r2.meta.warnings.length, 0);
+});
+
+test('3.0 landing page addresses drop tracking placeholders', async () => {
+  const { cleanUrl } = await import('../netlify/lib/ads.mjs');
+  assert.equal(cleanUrl('https://www.managementpros.com/property-management-lp/{ignore}?utm_source=google&utm_medium=cpc&utm_campaign={campaignid}&utm_content={adgroupid}&utm_term={keyword}#landing-form'), 'https://www.managementpros.com/property-management-lp/#landing-form');
+  assert.equal(cleanUrl('https://coachbychris.com/'), 'https://coachbychris.com/');
+  assert.equal(cleanUrl('https://a.com/p?id=5&x={lpurl}'), 'https://a.com/p?id=5');
+});
+
+/* ---------- 3.0: client journey ---------- */
+test('journey finds wins from the history and hides team-only parts from the client', async () => {
+  const J = await import('../netlify/lib/journey.mjs');
+  const days = []; const start = '2026-06-01';
+  for (let i = 0; i < 120; i++) { const date = new Date(Date.parse(start) + i * 864e5).toISOString().slice(0, 10); const live = i >= 30; days.push({ date, spend: live ? 100 : 0, clicks: live ? 20 : 0, impressions: live ? 1000 : 0, conversions: live && i % 2 ? 1 : 0, leads: 0, calls: live && i % 2 ? 1 : 0, deals: 0, revenue: 0 }); }
+  const h = { from: start, to: days[days.length - 1].date, rk: 'calls', label: 'Booked calls', goals: { cost_per_conversion: 250, monthly_conversions: 14 }, targets: {}, days };
+  const st = { ...J.blank(), kickoff: '2026-07-01' };
+  const wins = J.findWins(h, st);
+  const ids = wins.map((w) => w.id);
+  assert.ok(ids.includes('first_result'));
+  assert.ok(ids.includes('under_goal'));
+  assert.ok(ids.includes('monthly_goal'));
+  assert.equal(ids.filter((x) => x.startsWith('total_')).length, 1, 'only the highest running total is kept');
+  assert.equal(J.launchDate(h, st), '2026-07-01');
+  st.notes = [{ id: 'a', item: 'kickoff', text: 'team only', public: false, at: 1 }, { id: 'b', item: null, text: 'hello client', public: true, at: 2 }];
+  st.hidden_wins = ['first_result'];
+  st.items = { audit: { client: false } };
+  st.reports = { 30: { text: { headline: 'x' }, shared: false, generated_at: Date.now() } };
+  const client = { name: 'C', token: 'c', timezone: 'America/Denver' };
+  const cv = J.view(client, st, h, { team: false });
+  assert.ok(!cv.items.some((i) => i.id === 'audit'), 'team-only steps hidden');
+  assert.ok(!cv.items.find((i) => i.id === 'kickoff').notes.length, 'team notes hidden');
+  assert.deepEqual(cv.notes.map((n) => n.text), ['hello client']);
+  assert.ok(!cv.wins.some((w) => w.id === 'first_result'), 'hidden win not shown');
+  assert.ok(!cv.reports[30].text, 'unshared report not shown');
+  const tv = J.view(client, st, h, { team: true });
+  assert.ok(tv.reports[30].text && tv.items.some((i) => i.id === 'audit'));
+  assert.ok(tv.items.every((i) => !/access to/i.test(i.title)), 'only the milestones a business owner cares about');
+  assert.equal(tv.items.find((i) => i.id === 'google_live').date, '2026-07-01');
+});
+
+test('journey report text: rules fallback and no dashes from Claude', async () => {
+  const J = await import('../netlify/lib/journey.mjs');
+  const t = J.tidy({ headline: 'Up 40% — great', summary: 'a – b', wins: [{ title: 'W', detail: 'd' }], opportunities: [], next_steps: ['x'] });
+  assert.ok(!/[–—]/.test(JSON.stringify(t)));
+  const r = J.ruleWrite({ numbers: { label: 'Leads', period_days: 30, launch: '2026-07-01', since_launch: { spend: 1000, results: 10 }, before: { kind: 'previous', spend: 1000, results: 5, cost_per_result: 200 }, now: { spend: 1000, results: 10, cost_per_result: 100, ctr: 0.01 }, goal: { cost_per_result: 80 } }, wins: [] });
+  assert.match(r.summary, /down 50%/);
+  assert.match(r.summary, /30 days before/);
+  assert.ok(r.opportunities.length && r.next_steps.length);
+});
+
+test('check-in reports compare each period with the same length just before it', async () => {
+  const J = await import('../netlify/lib/journey.mjs');
+  const w30 = J.reportWindows('2026-07-01', 30, '2026-11-19');
+  assert.deepEqual(w30.now, ['2026-07-01', '2026-07-30']); assert.deepEqual(w30.prev, ['2026-06-01', '2026-06-30']); assert.equal(w30.early, false);
+  const w90 = J.reportWindows('2026-07-01', 90, '2026-11-19');
+  assert.deepEqual(w90.now, ['2026-07-01', '2026-09-28']); assert.deepEqual(w90.prev, ['2026-04-02', '2026-06-30']);
+  const w180 = J.reportWindows('2026-07-01', 180, '2026-11-19');
+  assert.equal(w180.early, true); assert.equal(w180.end, '2026-11-19'); assert.deepEqual(w180.now, ['2026-05-24', '2026-11-19']);
+  const client = { name: 'D', token: 'demo-calls', timezone: 'America/Denver' };
+  const st = { ...J.blank(), kickoff: new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10), value: { on: true, source: 'estimate', close_rate: 20, avg_sale: 3000 } };
+  const r = await J.makeReport({ client, st, days: 90, env: { VPM_DEV: '1' } });
+  assert.equal(r.numbers.before.kind, 'previous'); assert.equal(r.numbers.now.days, 90); assert.equal(r.numbers.before.days, 90);
+  assert.ok(r.numbers.value.now.estimate && r.numbers.value.now.amount > 0);
+  assert.ok(r.text.next_steps.length <= 4 && r.text.wins.length <= 4);
+});
+
+test('return in dollars is optional and needs its inputs', async () => {
+  const J = await import('../netlify/lib/journey.mjs');
+  const w = { spend: 1000, results: 10, revenue: 0 };
+  assert.equal(J.valueOf({ value: { on: false } }, w), null);
+  assert.equal(J.valueOf({ value: { on: true, source: 'ads' } }, w), null, 'no Google Ads value recorded');
+  assert.equal(J.valueOf({ value: { on: true, source: 'estimate', close_rate: 50 } }, w), null, 'missing average sale');
+  assert.deepEqual(J.valueOf({ value: { on: true, source: 'estimate', close_rate: 50, avg_sale: 400 } }, w), { amount: 2000, roi: 2, estimate: true });
+  assert.deepEqual(J.valueOf({ value: { on: true, source: 'ads' } }, { ...w, revenue: 5000 }), { amount: 5000, roi: 5, estimate: false });
+});
+
+test('check-ins due show up a week ahead and stop once the report is made', async () => {
+  const J = await import('../netlify/lib/journey.mjs');
+  const st = { ...J.blank(), launch_auto: '2026-10-25' };
+  assert.deepEqual(J.checkinsDue(st, '2026-11-20').map((x) => [x.days, x.due, x.overdue]), [[30, '2026-11-24', false]]);
+  st.reports = { 30: { text: { headline: 'x' } } };
+  assert.equal(J.checkinsDue(st, '2026-11-20').length, 0);
+  assert.deepEqual(J.checkinsDue({ ...J.blank(), launch: '2026-08-01' }, '2026-11-20').map((x) => x.days), [90]);
 });

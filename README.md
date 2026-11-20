@@ -278,7 +278,28 @@ Each year has its own copy of the billing sheet. The 2027 sheet already exists (
 2. In late December, the "Rebuild January 2027 from December" button copies the final December tab into the 2027 sheet as January (the January there now is kept, renamed "January (old date)").
 3. The Google account behind GOOGLE_SHEETS_REFRESH_TOKEN needs edit access to every year's sheet.
 
+## Client journey (/journey and the "Our journey" tab)
+
+A living timeline of each partnership, from kickoff to the first year.
+
+- **Team page (/journey):** pick a client, set the kickoff date, switch the client's tab on or off, tick off the key milestones, add events like a video shoot or Meta launch, add notes, and choose for each step and note whether the client sees it.
+- **Wins:** found in Google Ads automatically (first result, cost per result under the goal, the monthly goal reached, record weeks, running totals, better than before VPM). Hide any you do not want the client to see, or add your own.
+- **Check-in reports:** at 30 days, 90 days, 6 months and 1 year, Generate report compares that period with the same length just before it (30 days vs the 30 before, 90 vs the 90 before, and so on). Claude writes the wins, where to improve and next steps. You can reword it, and the client sees it only after you switch on Show to client.
+- **Client view:** the "Our journey" tab in each client report shows the shared steps, notes, top wins and shared reports.
+
+Settings in Netlify:
+- `ANTHROPIC_API_KEY`: lets Claude write the check-in reports. Without it, reports use set phrases. (Optional: `ANTHROPIC_MODEL`, default claude-sonnet-5-5.)
+- `REFRESH_SECRET`: already set; the report is written by a background function that checks it.
+
 ## Version notes
+
+- **3.2.0**: Check-in reports compare each period with the same length just before it (30 vs the 30 before, 90 vs the 90 before, and so on), written by Claude in the VPM brand voice and kept short. Download PDF gives a branded, printable copy (/jreport.html). Optional return in dollars per client (Google Ads sales value or an estimate from close rate and average sale). Link to the client's strategy and roadmap. The All clients page flags check-in reports due in the next 7 days or overdue.
+
+- **3.1.0**: Journey trimmed to the milestones a business owner cares about (agreement, kickoff, audit, tracking, strategy, videos, launch, first result, reports, goals, scaling), each with a one-line "why it matters". New per-client switch on /journey to show or hide the "Our journey" tab (off until you switch it on). Redesigned client tab: progress stepper, highlights, coming up next, our story so far, and a stage-by-stage roadmap.
+
+- **3.0.0**: Client journey: /journey team page and the "Our journey" tab in client reports, with milestones, notes (shown to the client or not), automatic wins and Claude-written check-in reports.
+
+- **2.12.0**: Ads & Creative: Performance Max campaigns now list their asset groups as ads (with headlines, descriptions and a clickable landing page) instead of "No ads in this view". Landing page addresses drop tracking placeholders like {ignore} and {campaignid} so the page opens properly. DATA_VERSION 2.12 so saved reports refresh with the new rows.
 
 - **2.11.0**: Month tabs can be named with their year ("November 2026"), which both billing sheets now use. New month tabs are named the same way, and a tab named for a different year than its sheet is skipped. Plain names ("November") still work.
 

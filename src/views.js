@@ -7,6 +7,7 @@ var VIEWS = {
   creative: ['Ads & Creative', 'Videos, ads and the pages people land on'],
   insights: ['Insights', 'Wins, what the numbers mean, and our next step']
 };
+var JOURNEY_VIEW = ['Our journey', 'Where we started, what we have achieved, and what comes next'];
 var TYPE_LBL = { video: 'Video', search: 'Search', pmax: 'Performance Max', shopping: 'Shopping', display: 'Display', other: 'Other' };
 var ICON = {
   overview: '<rect x="3" y="3" width="6" height="6" rx="1"/><rect x="11" y="3" width="6" height="4" rx="1"/><rect x="3" y="11" width="6" height="4" rx="1"/><rect x="11" y="9" width="6" height="6" rx="1"/>',
@@ -15,7 +16,8 @@ var ICON = {
   campaigns: '<path d="M4 3v14"/><path d="M4 4h10l-2 3 2 3H4"/>',
   audiences: '<circle cx="8" cy="7" r="3"/><path d="M2.5 16c.5-3 2.7-4.5 5.5-4.5s5 1.5 5.5 4.5"/><path d="M13 4.5a2.5 2.5 0 010 5M15 12c1.5.6 2.4 1.8 2.7 3.5"/>',
   creative: '<rect x="2.5" y="4" width="15" height="12" rx="2"/><path d="M8.5 7.8v4.4l4-2.2z"/>',
-  insights: '<path d="M7 14.5h6M8.2 17h3.6"/><path d="M10 2.5a5 5 0 00-3 9c.6.5 1 1.2 1 2h4c0-.8.4-1.5 1-2a5 5 0 00-3-9z"/>'
+  insights: '<path d="M7 14.5h6M8.2 17h3.6"/><path d="M10 2.5a5 5 0 00-3 9c.6.5 1 1.2 1 2h4c0-.8.4-1.5 1-2a5 5 0 00-3-9z"/>',
+  journey: '<path d="M4 16c2-5 4-1 6-6s4-4 6-7"/><circle cx="4" cy="16" r="1.6"/><circle cx="16" cy="3" r="1.6"/>'
 };
 function list() { return C.filter(function (c) { return S.type === 'all' || c.type === S.type; }); }
 function ids() { return list().map(function (c) { return c.id; }); }
@@ -450,4 +452,107 @@ function vDetail() {
   var age = groupBy('age', [c.id]), gen = groupBy('gender', [c.id]), dev = groupBy('device', [c.id]), cn = 'Cost per ' + sing(rlab());
   if (age.length || gen.length || dev.length) out += '<div class="three">' + panel(cn + ' by age', '', bars(age)) + panel(cn + ' by gender', '', bars(gen)) + panel(cn + ' by device', '', bars(dev)) + '</div>';
   return out;
+}
+
+/* ---------- our journey: milestones, wins and check-in reports (not tied to the date range) ----------
+   The tab only appears when the VPM team has switched it on for this client (on /journey). */
+var JRN = null, JRN_ERR = '', JRN_LOADING = false, JRN_WANT = /#journey$/.test(location.hash);
+function jDate(iso, yr) { return iso ? dlab(Date.parse(iso + 'T00:00:00Z'), yr) : ''; }
+function loadJourney() {
+  if (JRN_LOADING || !KEY) return; JRN_LOADING = true;
+  fetch('/api/journey?k=' + encodeURIComponent(KEY)).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (x) {
+      JRN_LOADING = false;
+      if (!x.ok) { JRN_ERR = x.j.error || 'Could not load the journey.'; return; }
+      JRN = x.j;
+      if (!JRN.enabled) return;
+      VIEWS.journey = JOURNEY_VIEW;
+      if (JRN_WANT && loaded) { JRN_WANT = false; S.view = 'journey'; }
+      if (loaded) render();
+    })
+    .catch(function () { JRN_LOADING = false; JRN_ERR = 'Could not load the journey.'; });
+}
+var JICON = {
+  check: '<path d="M4.5 10.5l3.5 3.5 7.5-8"/>',
+  star: '<path d="M10 2.8l2.2 4.5 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 8l5-.7z"/>',
+  flag: '<path d="M5 17V3.5"/><path d="M5 4h9l-2 3 2 3H5"/>',
+  doc: '<path d="M6 2.5h6l3 3v12H6z"/><path d="M12 2.5v3h3M8.5 10h4M8.5 13h4"/>',
+  next: '<circle cx="10" cy="10" r="7"/><path d="M10 6.5V10l2.5 1.5"/>'
+};
+function jIcon(k) { return '<svg viewBox="0 0 20 20" aria-hidden="true">' + JICON[k] + '</svg>'; }
+function vJourney() {
+  if (!JRN || !JRN.enabled) return panel('Our journey', '', '<p class="mut">' + esc(JRN_ERR || 'Loading') + '</p>');
+  var J = JRN, out = '', U = J.label || 'Results';
+  if (!J.kickoff && !J.launch) return panel('Our journey', '', '<p class="mut">Your journey starts at our kickoff call. Your VPM team will set it up shortly.</p>');
+  var startD = J.kickoff || J.launch, today = J.today;
+  var together = Math.max(0, Math.round((Date.parse(today + 'T00:00:00Z') - Date.parse(startD + 'T00:00:00Z')) / 864e5));
+  // which stage we are in: by days since launch (or kickoff before launch)
+  var sinceL = J.launch ? Math.round((Date.parse(today + 'T00:00:00Z') - Date.parse(J.launch + 'T00:00:00Z')) / 864e5) : -1;
+  var cur = sinceL < 0 ? 0 : sinceL <= 30 ? 2 : sinceL <= 90 ? 3 : sinceL <= 182 ? 4 : 5;
+  if (sinceL >= 0 && sinceL <= 7) cur = 1;
+  var T = J.totals;
+  // hero
+  out += '<div class="jhero"><div class="jtop"><div><p class="jk">Together since ' + esc(jDate(startD, 1)) + '</p><p class="jbig">' + together + ' <span>days</span></p></div>' +
+    (T && T.spend ? '<div class="jstats">' + (J.value ? '<div class="jval"><b>' + money(J.value.amount) + '</b><span>' + (J.value.estimate ? 'estimated sales' : 'in sales') + ' from the ads · ' + J.value.roi.toFixed(1) + 'x return</span></div>' : '') + '<div><b>' + int(T.results) + '</b><span>' + esc(U.toLowerCase()) + ' from the ads</span></div>' + (T.cost_per_result ? '<div><b>' + money2(T.cost_per_result) + '</b><span>per ' + esc(sing(U)) + '</span></div>' : '') + '<div><b>' + money(T.spend) + '</b><span>invested in ads</span></div></div>' : '') + '</div>' +
+    (J.roadmap_url ? '<a class="jmap" href="' + esc(J.roadmap_url) + '" target="_blank" rel="noopener">' + jIcon('flag') + 'Open your strategy and roadmap</a>' : '') +
+    '<ol class="jstep">' + J.phases.map(function (p, i) { return '<li class="' + (i < cur ? 'past' : i === cur ? 'now' : '') + '"><i></i><b>' + esc(p.name) + '</b>' + (i === cur ? '<span>You are here</span>' : '') + '</li>'; }).join('') + '</ol></div>';
+  if (J.goal && J.goal.note) out += '<p class="jgoal"><b>Our goal:</b> ' + esc(J.goal.note) + '</p>';
+
+  // highlights + coming up
+  var wins = J.wins.slice(0, 4);
+  var next = J.items.filter(function (i) { return !i.done; }).sort(function (a, b) { var pa = J.phases.findIndex(function (p) { return p.id === a.phase; }), pb = J.phases.findIndex(function (p) { return p.id === b.phase; }); return pa - pb || String(a.due || '9').localeCompare(String(b.due || '9')); }).slice(0, 4);
+  out += '<div class="jcols">';
+  out += '<div class="panel"><div class="ph"><div><h2>Highlights</h2><p class="sub">Wins worth celebrating</p></div></div>' + (wins.length ? '<div class="jwins">' + wins.map(function (w) { return '<div class="jwin">' + jIcon('star') + '<div><b>' + esc(w.title) + '</b>' + (w.detail ? '<p>' + esc(w.detail) + '</p>' : '') + '<span class="jwd">' + esc(jDate(w.date, 1)) + '</span></div></div>'; }).join('') + '</div>' : '<p class="mut">The first wins will show here as results come in.</p>') + '</div>';
+  out += '<div class="panel"><div class="ph"><div><h2>Coming up next</h2><p class="sub">The next steps on the road</p></div></div>' + (next.length ? '<ul class="jnext">' + next.map(function (i) { return '<li>' + jIcon('next') + '<div><b>' + esc(i.title) + '</b>' + (i.why ? '<p>' + esc(i.why) + '</p>' : '') + (i.due ? '<span>Planned ' + esc(jDate(i.due, 1)) + '</span>' : '') + '</div></li>'; }).join('') + '</ul>' : '<p class="mut">Every milestone so far is done.</p>') + '</div>';
+  out += '</div>';
+
+  // our story so far: done milestones and wins, oldest first
+  var story = J.items.filter(function (i) { return i.done && i.date; }).map(function (i) { return { date: i.date, title: i.title, kind: i.win ? 'star' : /report/.test(i.id) ? 'doc' : 'check', why: i.why, notes: i.notes }; })
+    .concat(J.wins.filter(function (w) { return ['first_result', 'under_goal', 'monthly_goal', 'roas_goal'].indexOf(w.id) < 0; }).map(function (w) { return { date: w.date, title: w.title, kind: 'star', why: w.detail, notes: [] }; }))
+    .sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+  var seen = {}; story = story.filter(function (x) { var k = x.date + x.title; if (seen[k]) return false; seen[k] = 1; return true; });
+  if (story.length) out += '<div class="panel"><div class="ph"><div><h2>Our story so far</h2><p class="sub">Every milestone, in order</p></div></div><ol class="jstory">' + story.map(function (x) {
+    return '<li class="' + x.kind + '"><span class="jdot">' + jIcon(x.kind) + '</span><div><span class="jsd">' + esc(jDate(x.date, 1)) + '</span><b>' + esc(x.title) + '</b>' + (x.why ? '<p>' + esc(x.why) + '</p>' : '') + x.notes.map(function (n) { return '<p class="jin">' + esc(n.text).replace(/\n/g, '<br>') + '</p>'; }).join('') + '</div></li>';
+  }).join('') + '</ol></div>';
+
+  // notes
+  if (J.notes.length) out += panel('Notes from your VPM team', '', J.notes.map(function (n) { return '<div class="jnote"><p>' + esc(n.text).replace(/\n/g, '<br>') + '</p><small>' + esc(dlab(n.at, 1)) + '</small></div>'; }).join(''));
+
+  // check-in reports
+  var ks = Object.keys(J.reports).sort(function (a, b) { return a - b; });
+  out += panel('Check-in reports', 'How the account compares with before we started', '<div class="jreps">' + ks.map(function (d) {
+    var r = J.reports[d];
+    if (r.text) return '<button type="button" class="jrep ready" data-jrep="' + d + '">' + jIcon('doc') + '<b>' + esc(r.name) + ' report</b><span>' + esc(r.text.headline || '') + '</span><em>Read the report</em></button>';
+    return '<div class="jrep">' + jIcon('doc') + '<b>' + esc(r.name) + ' report</b><span>' + (r.due ? (r.due <= today ? 'Coming soon' : 'Around ' + esc(jDate(r.due, 1))) : 'After the ads go live') + '</span></div>';
+  }).join('') + '</div>');
+
+  // the road ahead: one card per stage
+  out += '<div class="panel"><div class="ph"><div><h2>The roadmap</h2><p class="sub">Our first year together, stage by stage</p></div></div><div class="jroad">' + J.phases.map(function (p, idx) {
+    var its = J.items.filter(function (i) { return i.phase === p.id; }); if (!its.length) return '';
+    var nd = its.filter(function (i) { return i.done; }).length, pc = Math.round(nd / its.length * 100);
+    return '<div class="jstage' + (idx === cur ? ' now' : '') + (nd === its.length ? ' all' : '') + '"><div class="jsh"><b>' + esc(p.name) + '</b><span>' + nd + '/' + its.length + '</span></div><div class="jbar"><i style="width:' + pc + '%"></i></div><ul>' +
+      its.map(function (i) { return '<li class="' + (i.done ? 'done' : '') + '">' + (i.done ? jIcon('check') : '<i class="jo"></i>') + '<span>' + esc(i.title) + '</span></li>'; }).join('') + '</ul></div>';
+  }).join('') + '</div></div>';
+  return out;
+}
+function jReportHtml(r, U) {
+  var n = r.numbers || {}, b = n.before, c = n.now, t = r.text, h = '';
+  var row = function (l, f, k) { return '<tr><th>' + l + '</th><td>' + (b && b[k] != null ? f(b[k]) : 'n/a') + '</td><td>' + (c && c[k] != null ? f(c[k]) : 'n/a') + '</td></tr>'; };
+  h += '<div class="jrpt">';
+  if (t.summary) h += '<p class="jsum">' + esc(t.summary) + '</p>';
+  if (b && c) h += '<table class="jcmp"><thead><tr><th></th><th>' + jPer(b, n, 0) + '</th><th>' + jPer(c, n, 1) + '</th></tr></thead><tbody>' + (n.value ? row(n.value.now.estimate ? 'Estimated sales' : 'Sales from the ads', money, '_v') : '') +
+    row('Ad spend', money, 'spend') + row(esc(U), int, 'results') + row('Cost per ' + esc(sing(U)), money2, 'cost_per_result') + row('Clicks', int, 'clicks') + row('Cost per click', money2, 'cpc') + (c.roas || (b && b.roas) ? row('Return on ad spend', function (v) { return v.toFixed(1) + 'x'; }, 'roas') : '') + '</tbody></table>';
+  var sec = function (title, arr, cls) { return arr && arr.length ? '<h3>' + title + '</h3><ul class="' + cls + '">' + arr.map(function (x) { return typeof x === 'string' ? '<li>' + esc(x) + '</li>' : '<li><b>' + esc(x.title) + '</b>' + (x.detail ? ' ' + esc(x.detail) : '') + '</li>'; }).join('') + '</ul>' : ''; };
+  h += sec('Wins', t.wins, 'jw') + sec('Where we can improve', t.opportunities, 'jo') + sec('Our next steps', t.next_steps, 'jn');
+  return h + '</div>';
+}
+function jPer(w, n, isNow) {
+  var P = n.period_days || 30, lab = n.before && n.before.kind === 'previous' ? (isNow ? (n.early ? 'Last ' : 'This ') + P + ' days' : 'The ' + P + ' days before') : (isNow ? 'Now' : 'Before');
+  return lab + '<br><small>' + esc(jDate(w.from, 0)) + ' to ' + esc(jDate(w.to, 1)) + '</small>';
+}
+function openJReport(d) {
+  var r = JRN && JRN.reports[d]; if (!r || !r.text) return;
+  var n = r.numbers || {}; if (n.value && n.before && n.now) { n.before._v = n.value.before ? n.value.before.amount : null; n.now._v = n.value.now.amount; }
+  var v = showModal(r.name + ' report: ' + (r.text.headline || ''), (JRN.client_name || '') + (r.generated_at ? ' · ' + dlab(r.generated_at, 1) : ''), 'mpage jmodal', '<a class="mbtn" href="/jreport.html?k=' + encodeURIComponent(KEY) + '&d=' + d + '" target="_blank" rel="noopener">Download PDF</a> <span>A branded copy to save or share</span>');
+  v.innerHTML = jReportHtml(r, JRN.label || 'Results');
 }

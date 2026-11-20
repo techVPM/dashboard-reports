@@ -4,7 +4,7 @@
 
 import { applyGoals } from './goals.mjs';
 // Bump when the Google queries change, so saved reports built by older code are rebuilt.
-export const DATA_VERSION = '2.5';
+export const DATA_VERSION = '2.12';
 
 const DAY = 864e5;
 export const addDays = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * DAY).toISOString().slice(0, 10);
@@ -150,6 +150,22 @@ const MV = MX + ', metrics.video_trueview_views';
 
 const CHANNEL_TYPE = { SEARCH: 'search', VIDEO: 'video', DEMAND_GEN: 'video', PERFORMANCE_MAX: 'pmax', SHOPPING: 'shopping', DISPLAY: 'display' };
 
+// A landing page address as a person would open it: tracking placeholders like {ignore} or {campaignid}
+// (Google fills these in at click time) and the tracking parameters that only carry them are removed.
+export function cleanUrl(u) {
+  let s = String(u || '').trim();
+  if (!/^https?:\/\//i.test(s)) return s;
+  s = s.replace(/\{[^}]*\}/g, '');
+  const hash = s.indexOf('#'); const frag = hash >= 0 ? s.slice(hash) : ''; if (hash >= 0) s = s.slice(0, hash);
+  const q = s.indexOf('?');
+  if (q >= 0) {
+    const keep = s.slice(q + 1).split('&').filter((p) => { const [k, v = ''] = p.split('='); return k && v && !/^utm_/i.test(k); });
+    s = s.slice(0, q) + (keep.length ? '?' + keep.join('&') : '');
+  }
+  s = s.replace(/([^:])\/{2,}/g, '$1/');
+  return s + (frag && frag.length > 1 ? frag : '');
+}
+
 function adName(r) {
   const ad = r.adGroupAd?.ad || {};
   const h = ad.responsiveSearchAd?.headlines;
@@ -175,12 +191,22 @@ export const ITEM_SPECS = [
     item: (r) => {
       const ad = r.adGroupAd?.ad || {}, rsa = ad.responsiveSearchAd || {};
       const texts = (a, n) => (Array.isArray(a) ? a : []).map((x) => String(x?.text || '').trim()).filter(Boolean).slice(0, n);
-      const it = { campaign_id: r.campaign.id, name: adName(r), detail: r.adGroup?.name || '', url: String(ad.finalUrls?.[0] || '') };
+      const it = { campaign_id: r.campaign.id, name: adName(r), detail: r.adGroup?.name || '', url: cleanUrl(ad.finalUrls?.[0]) };
       // the words of a responsive search ad, so the report can show what the ad looks like on Google
       const h = texts(rsa.headlines, 15), d = texts(rsa.descriptions, 4);
       if (h.length) { it.headlines = h; it.descriptions = d; it.path = [rsa.path1, rsa.path2].filter(Boolean).map(String); }
       return it;
     },
+  },
+  {
+    // Performance Max has no ads, only asset groups (its "ads"): each with a landing page and its own headlines.
+    // Optional: if Google refuses this query the report carries on without it and without a warning.
+    kind: 'ads', from: 'asset_group', order: true, limit: 60, quiet: true, needSplit: true,
+    extraWhere: "campaign.advertising_channel_type = 'PERFORMANCE_MAX'",
+    fields: ['campaign.id', 'asset_group.id', 'asset_group.name', 'asset_group.final_urls'],
+    keyFields: ['campaign.id', 'asset_group.id'],
+    key: (r) => 'ag|' + r.assetGroup?.id,
+    item: (r) => ({ campaign_id: r.campaign.id, name: r.assetGroup?.name || 'Asset group', detail: 'Performance Max asset group', url: cleanUrl(r.assetGroup?.finalUrls?.[0]), ag: String(r.assetGroup?.id || '') }),
   },
   {
     kind: 'videos', from: 'video', video: true, order: true, limit: 80, src: 'video',
@@ -260,7 +286,7 @@ export const ITEM_SPECS = [
     fields: ['campaign.id', 'landing_page_view.unexpanded_final_url'],
     keyFields: ['campaign.id', 'landing_page_view.unexpanded_final_url'],
     key: (r) => r.campaign?.id + '|' + r.landingPageView?.unexpandedFinalUrl,
-    item: (r) => { const u = String(r.landingPageView?.unexpandedFinalUrl || ''); return { campaign_id: r.campaign.id, name: u.replace(/^https?:\/\//, ''), detail: '', url: u }; },
+    item: (r) => { const u = cleanUrl(r.landingPageView?.unexpandedFinalUrl); return { campaign_id: r.campaign.id, name: u.replace(/^https?:\/\//, ''), detail: '', url: u }; },
   },
   {
     kind: 'hours', from: 'campaign',
@@ -380,13 +406,17 @@ export async function buildReport({ client: rawClient, from, to, env = process.e
       `SELECT campaign.id, campaign_budget.amount_micros, metrics.search_impression_share, metrics.search_budget_lost_impression_share, metrics.search_rank_lost_impression_share ` +
       `FROM campaign WHERE ${dateWhere(from, to)} AND campaign.advertising_channel_type = 'SEARCH' AND metrics.impressions > 0${andSw}`, opts), warnings);
 
+  const quiet = (p) => p.catch(() => null);
   const itemPs = ITEM_SPECS.map((spec) => ({
     spec,
-    base: settle(spec.kind, runQuery(customerId, baseQuery(spec, from, to, sw), opts), warnings),
+    base: spec.quiet ? quiet(runQuery(customerId, baseQuery(spec, from, to, sw), opts)) : settle(spec.kind, runQuery(customerId, baseQuery(spec, from, to, sw), opts), warnings),
     split: classifier.configured
-      ? settle(spec.kind + ' (conversion split)', runQuery(customerId, splitQuery(spec, from, to, convField, sw), opts), warnings)
+      ? (spec.quiet ? quiet(runQuery(customerId, splitQuery(spec, from, to, convField, sw), opts)) : settle(spec.kind + ' (conversion split)', runQuery(customerId, splitQuery(spec, from, to, convField, sw), opts), warnings))
       : Promise.resolve(null),
   }));
+  // the headlines and descriptions of each Performance Max asset group, for the ad preview
+  const agTextP = quiet(runQuery(customerId,
+    "SELECT asset_group.id, asset_group_asset.field_type, asset.text_asset.text FROM asset_group_asset WHERE asset_group_asset.field_type IN ('HEADLINE', 'LONG_HEADLINE', 'DESCRIPTION') AND asset_group_asset.status = 'ENABLED' LIMIT 2000", opts));
 
   // First and last day each video ran in this range: powers "new this week" and "running or paused".
   const vdaysP = settle('video days', runQuery(customerId,
@@ -447,6 +477,8 @@ export async function buildReport({ client: rawClient, from, to, env = process.e
     const baseRows = await base;
     if (!baseRows) continue;
     const splitRows = await split;
+    // results would read as zero without the split, so leave these rows out rather than show wrong numbers
+    if (spec.needSplit && classifier.configured && !splitRows) continue;
     const map = new Map();
     for (const r of baseRows) {
       const k = spec.key(r);
@@ -474,6 +506,22 @@ export async function buildReport({ client: rawClient, from, to, env = process.e
       return f;
     });
     items[spec.kind] = (items[spec.kind] || []).concat(list);
+  }
+  if (items.ads) {
+    const txt = new Map();
+    for (const r of (await agTextP) || []) {
+      const id = String(r.assetGroup?.id || ''), t = String(r.asset?.textAsset?.text || '').trim(); if (!id || !t) continue;
+      const o = txt.get(id) || { h: [], l: [], d: [] };
+      const ft = r.assetGroupAsset?.fieldType;
+      (ft === 'DESCRIPTION' ? o.d : ft === 'LONG_HEADLINE' ? o.l : o.h).push(t);
+      txt.set(id, o);
+    }
+    for (const a of items.ads) {
+      if (!a.ag) continue;
+      const o = txt.get(a.ag);
+      if (o && (o.h.length || o.l.length)) { a.headlines = o.h.concat(o.l).slice(0, 15); a.descriptions = o.d.slice(0, 5); a.path = []; }
+      delete a.ag;
+    }
   }
   if (items.hours) {
     // fold any duplicate hours across campaigns

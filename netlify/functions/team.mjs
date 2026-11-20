@@ -8,6 +8,8 @@ import { summarize, emptyRow, healthFor, bizByToken } from '../lib/team.mjs';
 import { savedBusiness, refreshBusiness } from '../lib/business.mjs';
 import { demoReport } from '../lib/demo.mjs';
 import { isAdmin, jsonRes } from '../lib/auth.mjs';
+import { loadJourney, checkinsDue } from '../lib/journey.mjs';
+import { todayIn } from '../lib/ads.mjs';
 
 import { savedReport as saved, PRE } from '../lib/saved.mjs';
 
@@ -58,7 +60,11 @@ export default async (req) => {
       return emptyRow(c, 'Could not read: ' + e.message);
     }
   }));
-  return jsonRes({ generated_at: new Date().toISOString(), days, inactive: all.length - active.length, clients: rows, business_linked: !!bizHit?.snap });
+  // client journey check-ins due in the next 7 days (or up to 30 days late) that have not been made yet
+  const checkins = (await Promise.all(all.filter((c) => c.token && !c.disabled).map(async (c) => {
+    try { return checkinsDue(await loadJourney(c.token), todayIn(c.timezone)).map((x) => ({ ...x, token: c.token, name: c.name })); } catch { return []; }
+  }))).flat().sort((a, b) => (a.due < b.due ? -1 : 1));
+  return jsonRes({ generated_at: new Date().toISOString(), days, inactive: all.length - active.length, clients: rows, checkins, business_linked: !!bizHit?.snap });
 };
 
 export const config = { path: '/api/team' };

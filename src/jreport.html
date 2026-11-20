@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Check-in report | Video Power Marketing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--red:#BA2025;--jet:#2A2A2A;--blue:#00BAFF;--plat:#E6E6E6;--green:#204E60;--slate:#748A93;--good:#1E7F55;--goodbg:#E3F2EA}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#E9ECEE;color:var(--jet);font-family:'Source Sans 3','Source Sans Pro',system-ui,sans-serif;font-size:15px;line-height:1.45}
+  .bar{position:sticky;top:0;z-index:2;display:flex;justify-content:center;gap:10px;padding:12px 16px;background:var(--jet)}
+  .bar button{font:inherit;font-weight:700;border:0;border-radius:8px;padding:10px 18px;cursor:pointer;background:var(--red);color:#fff}
+  .bar span{color:#C9D1D4;align-self:center;font-size:14px}
+  .page{max-width:820px;margin:24px auto;background:#fff;box-shadow:0 6px 30px rgba(0,0,0,.12)}
+  header{background:var(--jet);color:#fff;padding:26px 36px 22px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;border-bottom:5px solid var(--red)}
+  .brand{font-family:Oswald,sans-serif;font-weight:700;letter-spacing:.08em;font-size:17px;line-height:1.1}
+  .brand span{display:block;color:#E0474C}
+  .who{text-align:right}
+  .who b{display:block;font-family:Oswald,sans-serif;font-weight:600;font-size:26px;line-height:1.1}
+  .who span{color:#C9D1D4;font-size:14px}
+  main{padding:28px 36px 32px}
+  .kick{font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--red);margin:0}
+  h1{font-family:Oswald,sans-serif;font-weight:600;font-size:30px;line-height:1.15;margin:4px 0 10px}
+  .sum{font-size:17px;margin:0 0 22px}
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:0 0 24px}
+  .card{border:1px solid var(--plat);border-radius:12px;padding:14px 16px}
+  .card .l{font-size:12.5px;font-weight:700;color:var(--slate);text-transform:uppercase;letter-spacing:.05em}
+  .card .v{font-family:Oswald,sans-serif;font-size:28px;font-weight:600;line-height:1.1;margin-top:4px}
+  .card .d{font-size:13.5px;margin-top:4px;color:var(--slate)}
+  .card .d b.up{color:var(--good)}.card .d b.dn{color:var(--red)}
+  table{width:100%;border-collapse:collapse;font-size:14.5px;margin:0 0 24px}
+  th,td{padding:8px 10px;border-bottom:1px solid var(--plat);text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  thead th{font-size:12.5px;color:var(--slate);text-transform:uppercase;letter-spacing:.04em}
+  thead th small{display:block;text-transform:none;letter-spacing:0;font-weight:400}
+  h2{font-family:Oswald,sans-serif;font-weight:600;font-size:20px;margin:22px 0 10px;display:flex;align-items:center;gap:10px}
+  h2 i{width:10px;height:22px;border-radius:3px;background:var(--red);display:inline-block}
+  h2.w i{background:var(--good)}h2.o i{background:var(--blue)}h2.n i{background:var(--green)}
+  ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+  .wins li{background:var(--goodbg);border-radius:10px;padding:10px 14px}
+  .opps li{background:#E2F3FB;border-radius:10px;padding:10px 14px}
+  li b{display:block}
+  .steps{counter-reset:s}
+  .steps li{counter-increment:s;display:flex;gap:10px;align-items:baseline}
+  .steps li::before{content:counter(s);flex:none;width:24px;height:24px;border-radius:50%;background:var(--green);color:#fff;font-weight:700;font-size:13px;display:grid;place-items:center}
+  footer{padding:14px 36px;border-top:1px solid var(--plat);display:flex;justify-content:space-between;font-size:12.5px;color:var(--slate)}
+  .msg{max-width:820px;margin:60px auto;text-align:center;color:var(--slate)}
+  @page{size:letter;margin:12mm}
+  @media print{html,body{background:#fff}.bar{display:none}.page{margin:0;box-shadow:none;max-width:none}header{-webkit-print-color-adjust:exact;print-color-adjust:exact}.wins li,.opps li,.steps li::before,h2 i{-webkit-print-color-adjust:exact;print-color-adjust:exact}li,table,.cards{break-inside:avoid}}
+  @media (max-width:640px){header{flex-direction:column;align-items:flex-start;padding:20px}.who{text-align:left}main{padding:20px}.cards{grid-template-columns:1fr}footer{padding:12px 20px}}
+</style>
+</head>
+<body>
+<div class="bar"><button type="button" id="dl">Download PDF</button><span>Choose "Save as PDF" in the print window.</span></div>
+<div id="root"><p class="msg">Loading the report</p></div>
+<script>
+(function () {
+  'use strict';
+  var q = new URLSearchParams(location.search), k = q.get('k'), token = q.get('token'), d = q.get('d'), pw = '';
+  try { pw = localStorage.getItem('vpm_admin_key') || ''; } catch (e) { /* ignore */ }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function money(v) { return v == null ? 'n/a' : '$' + Math.round(v).toLocaleString('en-US'); }
+  function money2(v) { return v == null ? 'n/a' : '$' + (v >= 100 ? Math.round(v).toLocaleString('en-US') : v.toFixed(2)); }
+  function int(v) { return v == null ? 'n/a' : Math.round(v).toLocaleString('en-US'); }
+  function dl(s, y) { return s ? new Date(s + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: y ? 'numeric' : undefined, timeZone: 'UTC' }) : ''; }
+  function sing(s) { return String(s || '').toLowerCase().replace(/ies$/, 'y').replace(/s$/, ''); }
+  document.getElementById('dl').addEventListener('click', function () { window.print(); });
+  var url = '/api/journey?' + (token ? 'token=' + encodeURIComponent(token) : 'k=' + encodeURIComponent(k || ''));
+  fetch(url, { headers: token ? { 'x-admin-key': pw } : {} }).then(function (r) { return r.json(); }).then(function (J) {
+    var r = J.reports && J.reports[d];
+    if (!r || !r.text) { document.getElementById('root').innerHTML = '<p class="msg">' + esc(J.error || 'This report is not available.') + '</p>'; return; }
+    document.title = (J.client_name || '') + ' ' + r.name + ' report | Video Power Marketing';
+    var n = r.numbers || {}, b = n.before || {}, c = n.now || {}, t = r.text, U = n.label || J.label || 'Results', P = n.period_days || d, prevK = b.kind === 'previous';
+    var chg = function (a, z, lowerBetter) { if (a == null || z == null || !a) return ''; var p = Math.round((z - a) / a * 100); if (!p) return 'Same as before'; var good = lowerBetter ? p < 0 : p > 0; return '<b class="' + (good ? 'up' : 'dn') + '">' + (p > 0 ? '+' : '') + p + '%</b> vs the ' + P + ' days before'; };
+    var cards = '<div class="card"><div class="l">' + esc(U) + '</div><div class="v">' + int(c.results) + '</div><div class="d">' + chg(b.results, c.results) + '</div></div>' +
+      '<div class="card"><div class="l">Cost per ' + esc(sing(U)) + '</div><div class="v">' + money2(c.cost_per_result) + '</div><div class="d">' + chg(b.cost_per_result, c.cost_per_result, 1) + '</div></div>' +
+      (n.value ? '<div class="card"><div class="l">' + (n.value.now.estimate ? 'Estimated sales' : 'Sales from the ads') + '</div><div class="v">' + money(n.value.now.amount) + '</div><div class="d">' + n.value.now.roi.toFixed(1) + 'x return on ad spend</div></div>'
+        : '<div class="card"><div class="l">Invested in ads</div><div class="v">' + money(c.spend) + '</div><div class="d">' + chg(b.spend, c.spend) + '</div></div>');
+    var row = function (l, f, a, z) { return '<tr><td>' + l + '</td><td>' + (a != null ? f(a) : 'n/a') + '</td><td>' + (z != null ? f(z) : 'n/a') + '</td></tr>'; };
+    var table = '<table><thead><tr><th></th><th>' + (prevK ? 'The ' + P + ' days before' : 'Before') + '<small>' + dl(b.from) + ' to ' + dl(b.to, 1) + '</small></th><th>' + (n.early ? 'Last ' : 'These ') + P + ' days<small>' + dl(c.from) + ' to ' + dl(c.to, 1) + '</small></th></tr></thead><tbody>' +
+      row('Ad spend', money, b.spend, c.spend) + row(esc(U), int, b.results, c.results) + row('Cost per ' + esc(sing(U)), money2, b.cost_per_result, c.cost_per_result) + row('Clicks', int, b.clicks, c.clicks) + row('Cost per click', money2, b.cpc, c.cpc) +
+      (n.value ? row(n.value.now.estimate ? 'Estimated sales' : 'Sales from the ads', money, n.value.before ? n.value.before.amount : null, n.value.now.amount) : (c.roas || b.roas) ? row('Return on ad spend', function (v) { return v.toFixed(1) + 'x'; }, b.roas, c.roas) : '') + '</tbody></table>';
+    var list = function (arr, cls) { return '<ul class="' + cls + '">' + (arr || []).map(function (x) { return typeof x === 'string' ? '<li><span>' + esc(x) + '</span></li>' : '<li><b>' + esc(x.title) + '</b>' + esc(x.detail || '') + '</li>'; }).join('') + '</ul>'; };
+    document.getElementById('root').innerHTML = '<div class="page"><header><div class="brand">VIDEO POWER<span>MARKETING</span></div><div class="who"><b>' + esc(J.client_name) + '</b><span>' + esc(r.name) + ' check-in · ' + dl(c.from) + ' to ' + dl(c.to, 1) + '</span></div></header><main>' +
+      '<p class="kick">' + esc(r.name) + ' check-in report</p><h1>' + esc(t.headline) + '</h1><p class="sum">' + esc(t.summary) + '</p>' +
+      '<div class="cards">' + cards + '</div>' + table +
+      (t.wins && t.wins.length ? '<h2 class="w"><i></i>Wins</h2>' + list(t.wins, 'wins') : '') +
+      (t.opportunities && t.opportunities.length ? '<h2 class="o"><i></i>Where we can improve</h2>' + list(t.opportunities, 'opps') : '') +
+      (t.next_steps && t.next_steps.length ? '<h2 class="n"><i></i>Our next steps</h2>' + list(t.next_steps, 'steps') : '') +
+      '</main><footer><span>Prepared for ' + esc(J.client_name) + ' by Video Power Marketing</span><span>' + new Date(r.generated_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) + '</span></footer></div>';
+    if (q.get('print') === '1') setTimeout(function () { window.print(); }, 600);
+  }).catch(function () { document.getElementById('root').innerHTML = '<p class="msg">Could not load the report.</p>'; });
+})();
+</script>
+</body>
+</html>

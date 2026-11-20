@@ -459,3 +459,96 @@
 .vpm .lbox img{display:none;width:100%;height:auto}
 .vpm .lbox img.on{display:block}
 @media (max-width:640px){.vpm .mpage.shot{padding:10px;max-height:78vh}.vpm .gad .gtitle{font-size:17px}}
+/* our journey */
+.vpm .jhero{background:linear-gradient(135deg,#2A2A2A 0%,#1d3540 100%);color:#fff;border-radius:16px;padding:24px 26px 20px;display:flex;flex-direction:column;gap:22px}
+.vpm .jtop{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:18px}
+.vpm .jhero .jk{margin:0;color:#C9D1D4;font-size:14px}
+.vpm .jhero .jbig{margin:2px 0 0;font-family:var(--font-head);font-size:52px;line-height:1}
+.vpm .jhero .jbig span{font-size:20px;color:#C9D1D4}
+.vpm .jstats{display:flex;flex-wrap:wrap;gap:12px}
+.vpm .jstats div{display:flex;flex-direction:column;background:rgba(255,255,255,.08);border-radius:12px;padding:10px 16px;min-width:120px}
+.vpm .jstats b{font-family:var(--font-head);font-size:28px;font-weight:500;line-height:1.1}
+.vpm .jstats span{font-size:13px;color:#C9D1D4}
+.vpm .jstep{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));position:relative}
+.vpm .jstep li{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;font-size:13px;color:#9fb0b7;padding:0 4px}
+.vpm .jstep li::before{content:'';position:absolute;top:9px;left:-50%;width:100%;height:3px;background:rgba(255,255,255,.18)}
+.vpm .jstep li:first-child::before{display:none}
+.vpm .jstep li.past::before,.vpm .jstep li.now::before{background:#5CD0A0}
+.vpm .jstep i{position:relative;z-index:1;width:20px;height:20px;border-radius:50%;background:#2A2A2A;border:3px solid rgba(255,255,255,.3)}
+.vpm .jstep li.past i{background:#5CD0A0;border-color:#5CD0A0}
+.vpm .jstep li.now i{background:#fff;border-color:#E0474C;box-shadow:0 0 0 5px rgba(224,71,76,.3)}
+.vpm .jstep li.past b,.vpm .jstep li.now b{color:#fff}
+.vpm .jstep b{font-weight:600;line-height:1.2}
+.vpm .jstep span{font-size:11.5px;font-weight:700;color:#E0474C;text-transform:uppercase;letter-spacing:.05em}
+.vpm .jgoal{margin:0;padding:12px 16px;background:var(--info-bg);border-radius:12px}
+.vpm .jcols{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px}
+.vpm .jcols .panel{margin:0}
+.vpm .jwins{display:grid;gap:10px}
+.vpm .jwin{display:flex;gap:12px;align-items:flex-start;background:var(--good-bg);border-radius:12px;padding:14px 16px}
+.vpm .jwin svg{flex:none;width:26px;height:26px;fill:#F2B705;stroke:#C98F00;stroke-width:1;stroke-linejoin:round}
+.vpm .jwin b{display:block;font-size:16px;line-height:1.3}
+.vpm .jwin p{margin:2px 0 0;font-size:14px;color:var(--muted)}
+.vpm .jwd{display:block;margin-top:4px;font-size:12px;font-weight:700;color:var(--good);text-transform:uppercase;letter-spacing:.04em}
+.vpm .jnext{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.vpm .jnext li{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line);border-radius:12px}
+.vpm .jnext svg{flex:none;width:22px;height:22px;fill:none;stroke:var(--c1);stroke-width:1.7;stroke-linecap:round}
+.vpm .jnext b{display:block}
+.vpm .jnext p{margin:2px 0 0;font-size:14px;color:var(--muted)}
+.vpm .jnext span{display:block;margin-top:3px;font-size:12.5px;font-weight:700;color:var(--c1)}
+.vpm .jstory{list-style:none;margin:0;padding:0;position:relative}
+.vpm .jstory::before{content:'';position:absolute;left:15px;top:6px;bottom:6px;width:2px;background:var(--line)}
+.vpm .jstory li{position:relative;display:flex;gap:14px;padding:0 0 18px}
+.vpm .jstory li:last-child{padding-bottom:0}
+.vpm .jdot{position:relative;z-index:1;flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:var(--c1)}
+.vpm .jdot svg{width:17px;height:17px;fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.vpm .jstory li.star .jdot{background:#F2B705}
+.vpm .jstory li.star .jdot svg{fill:#fff;stroke:#fff;stroke-width:1}
+.vpm .jstory li.doc .jdot{background:var(--c2)}
+.vpm .jstory li.check .jdot{background:var(--good)}
+.vpm .jstory li > div{padding-top:3px;min-width:0}
+.vpm .jsd{display:block;font-size:12.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.vpm .jstory b{display:block;font-size:16px}
+.vpm .jstory p{margin:2px 0 0;font-size:14px;color:var(--muted)}
+.vpm .jstory .jin,.vpm .jin{color:var(--fg);margin-top:6px;padding:8px 12px;background:var(--soft);border-radius:10px;border-left:3px solid var(--c1)}
+.vpm .jnote{border-left:3px solid var(--c1);padding:4px 0 4px 12px;margin:10px 0}
+.vpm .jnote p{margin:0}.vpm .jnote small{color:var(--muted)}
+.vpm .jreps{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.vpm .jrep{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px dashed var(--line);border-radius:12px;padding:14px;background:var(--soft)}
+.vpm .jrep svg{width:22px;height:22px;fill:none;stroke:var(--muted);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.vpm .jrep span{font-size:14px;color:var(--muted)}
+.vpm .jrep.ready{border:1px solid var(--c1);background:var(--panel);cursor:pointer}
+.vpm .jrep.ready svg{stroke:var(--c1)}
+.vpm .jrep.ready em{font-style:normal;font-weight:700;color:var(--c1);font-size:14px;text-decoration:underline}
+.vpm .jroad{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.vpm .jstage{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:var(--panel)}
+.vpm .jstage.now{border-color:#E0474C;box-shadow:0 0 0 3px rgba(224,71,76,.12)}
+.vpm .jstage.all{background:var(--good-bg);border-color:transparent}
+.vpm .jsh{display:flex;justify-content:space-between;align-items:baseline}
+.vpm .jsh b{font-family:var(--font-head);font-size:18px;font-weight:500}
+.vpm .jsh span{font-size:13px;font-weight:700;color:var(--muted)}
+.vpm .jbar{height:6px;border-radius:4px;background:var(--line);margin:8px 0 10px;overflow:hidden}
+.vpm .jbar i{display:block;height:100%;background:var(--good);border-radius:4px}
+.vpm .jstage ul{list-style:none;margin:0;padding:0;display:grid;gap:7px}
+.vpm .jstage li{display:flex;gap:8px;align-items:flex-start;font-size:14px;color:var(--muted)}
+.vpm .jstage li.done{color:var(--fg)}
+.vpm .jstage li svg{flex:none;width:16px;height:16px;fill:none;stroke:var(--good);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;margin-top:2px}
+.vpm .jstage .jo{flex:none;width:14px;height:14px;border:2px solid var(--line);border-radius:50%;margin:3px 1px 0}
+.vpm .jrpt{padding:4px 2px 10px}
+.vpm .jrpt h3{font-family:var(--font-head);font-size:19px;margin:16px 0 6px}
+.vpm .jrpt ul{margin:0;padding-left:20px}.vpm .jrpt li{margin:5px 0}
+.vpm .jsum{font-size:16px;margin:0 0 12px}
+.vpm .jcmp{width:100%;border-collapse:collapse;font-size:14.5px}
+.vpm .jcmp th,.vpm .jcmp td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right}
+.vpm .jcmp th:first-child{text-align:left;font-weight:600}
+.vpm .jcmp thead th{font-size:13px;color:var(--muted);font-weight:700}
+.vpm .mpage.jmodal{height:auto;max-height:75vh;overflow:auto;background:var(--panel);padding:8px 16px}
+@media (max-width:980px){.vpm .jcols{grid-template-columns:minmax(0,1fr)}.vpm .jroad{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.vpm .jhero{padding:18px}.vpm .jhero .jbig{font-size:40px}.vpm .jstats div{min-width:0;flex:1 1 40%}.vpm .jstats b{font-size:22px}
+  .vpm .jstep{grid-template-columns:minmax(0,1fr);gap:0}.vpm .jstep li{flex-direction:row;text-align:left;gap:10px;padding:5px 0}.vpm .jstep li::before{top:-50%;left:8.5px;width:3px;height:100%}
+  .vpm .jroad{grid-template-columns:minmax(0,1fr)}}
+.vpm .jstats .jval{background:rgba(92,208,160,.18)}
+.vpm .jstats .jval b{color:#5CD0A0}
+.vpm .jmap{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-weight:700;font-size:14px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.25);border-radius:10px;padding:8px 14px}
+.vpm .jmap:hover{background:rgba(255,255,255,.18)}
+.vpm .jmap svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.vpm .jcmp small{font-weight:400}
