@@ -223,10 +223,11 @@ export function view(client, st, h, { team = false } = {}) {
     const s = st.items[t.id] || {};
     const autoDate = t.auto ? auto[t.auto] || null : null;
     const done = s.done != null ? !!s.done : !!autoDate;
-    return { id: t.id, phase: t.phase, title: s.title || t.title, why: t.why, client: s.client != null ? !!s.client : t.client, done, date: s.date || (done ? autoDate : '') || '', auto: t.auto, auto_date: autoDate, due: s.due || '', notes: notesFor(t.id), custom: false };
+    return { id: t.id, phase: t.phase, title: s.title || t.title, why: s.why != null ? s.why : t.why, removed: !!s.removed, client: s.client != null ? !!s.client : t.client, done, date: s.date || (done ? autoDate : '') || '', auto: t.auto, auto_date: autoDate, due: s.due || '', notes: notesFor(t.id), custom: false };
   }).concat(st.custom.map((c) => ({ id: c.id, phase: c.phase, title: c.title, client: !!c.client, done: !!c.done, date: c.date || '', due: c.due || '', win: !!c.win, detail: c.detail || '', notes: notesFor(c.id), custom: true })));
   const hidden = new Set(st.hidden_wins || []);
-  const allWins = wins.map((w) => ({ ...w, hidden: hidden.has(w.id) }))
+  const WE = st.win_edits || {};
+  const allWins = wins.map((w) => ({ ...w, ...(WE[w.id] || {}), edited: !!WE[w.id], hidden: hidden.has(w.id) }))
     .concat(st.custom.filter((c) => c.win && c.done).map((c) => ({ id: c.id, date: c.date, title: c.title, detail: c.detail || '', score: 80, auto: false, kind: 'win', hidden: !c.client })));
   const reports = {};
   for (const [d, name] of CHECKPOINTS) {
@@ -238,7 +239,8 @@ export function view(client, st, h, { team = false } = {}) {
   const out = {
     client_name: client.name, enabled: !!st.enabled, kickoff: st.kickoff || '', launch: L || '', launch_set: !!st.launch,
     today: todayIn(client.timezone), phases: PHASES.map(([id, name, sub]) => ({ id, name, sub })),
-    items: team ? items : items.filter((i) => i.client),
+    items: team ? items : items.filter((i) => i.client && !i.removed),
+    stage: stageIndex(L, todayIn(client.timezone)),
     notes: st.notes.filter((n) => !n.item && (team || n.public)).map((n) => ({ id: n.id, text: n.text, public: !!n.public, at: n.at })),
     wins: (team ? allWins : allWins.filter((w) => !w.hidden)).sort((a, b) => b.score - a.score || (a.date < b.date ? 1 : -1)),
     reports,
@@ -272,6 +274,12 @@ export function valueOf(st, w) {
 /* ---------- checkpoint report ----------
    Each check-in compares its own period with the period just before it:
    30-day report: the last 30 days against the 30 days before them; 90-day: the last 90 against the 90 before; and so on. */
+// Which stage of the first year the client is in: 0 onboarding (before launch), 1 launch (first week), 2 first 30 days, 3 to day 90, 4 to month 6, 5 after.
+export function stageIndex(L, today) {
+  if (!L) return 0;
+  const n = daysBetween(L, today);
+  return n < 0 ? 0 : n <= 7 ? 1 : n <= 30 ? 2 : n <= 90 ? 3 : n <= 182 ? 4 : 5;
+}
 const dailyTotals = (r, rk) => {
   const m = new Map();
   for (const d of r.daily || []) {
@@ -298,6 +306,9 @@ export async function makeReport({ client, st, days, env = process.env, fetchFn 
   const both = await get(W.prev[0], W.end);
   const hh = { ...h, days: dailyTotals(both, h.rk), to: W.end };
   const prev = { ...sumWindow(hh, W.prev[0], W.prev[1]), kind: 'previous' };
+  // week by week (month by month for the 6-month and 1-year reports) for the charts
+  const step = days > 120 ? 30 : 7, buckets = (a, b) => { const out = []; for (let e = b; e >= a; e = addDays(e, -step)) { const st0 = addDays(e, -(step - 1)) < a ? a : addDays(e, -(step - 1)); const w = sumWindow(hh, st0, e); out.unshift({ from: st0, to: e, spend: w.spend, results: w.results, cost: w.cost_per_result, revenue: w.revenue }); } return out; }; // full weeks counted back from the last day, so the newest bar is never a part week
+  const series = { step, now: buckets(W.now[0], W.now[1]), before: buckets(W.prev[0], W.prev[1]) };
   const now = sumWindow(hh, W.now[0], W.now[1]);
   const since = sumWindow(h, L, W.end);
   const vNow = valueOf(st, now), vPrev = valueOf(st, prev);
@@ -319,7 +330,7 @@ export async function makeReport({ client, st, days, env = process.env, fetchFn 
   const numbers = {
     client: client.name, checkpoint: days, period_days: days, label: h.label, kickoff: st.kickoff || null, launch: L, end: W.end, early: W.early,
     goal: { cost_per_result: h.goals?.cost_per_conversion || null, monthly_results: h.goals?.monthly_conversions || null, roas: h.goals?.roas || null, note: h.goals?.note || '' },
-    before: prev, now, since_launch: since,
+    before: prev, now, since_launch: since, series,
     value: vNow ? { now: vNow, before: vPrev } : null,
   };
   const facts = { numbers, wins: wins.map((w) => ({ date: w.date, title: w.title, detail: w.detail })), milestones_this_period: done, notes: st.notes.filter((n) => n.public).map((n) => n.text).slice(-10), detail };
@@ -340,13 +351,14 @@ Be honest: celebrate real wins with numbers, name gaps plainly and say what we w
 
 The comparison: "now" is the latest ${'${period}'}-day period, "before" is the ${'${period}'} days just before it. Say that plainly (for example "the last 30 days compared with the 30 days before"). If "value" is present it is ${'${valueKind}'}.
 
-Keep it short and easy to scan:
-- headline: one line, 12 words or fewer, the most important result
-- summary: 2 short sentences
-- wins: 3 items, each a short title and one sentence
-- opportunities: 2 items, each a short title and one sentence with what we will do
-- next_steps: 3 short action lines starting with a verb
-Return only JSON: {"headline": "", "summary": "", "wins": [{"title": "", "detail": ""}], "opportunities": [{"title": "", "detail": ""}], "next_steps": [""]}`;
+Structure it as Progress, Problems and Plans, kept short and easy to scan:
+- headline: one line, 12 words or fewer, the most important result (honest, even when results are down)
+- summary: 2 short sentences on where things stand
+- progress: 2 to 3 items, what got better or what we built, each a short title and one sentence with a number
+- problems: 1 to 3 items, what the data shows is not working yet, said plainly, each a short title and one sentence
+- plans: 2 to 3 items, what we will do next and why, each a short title and one sentence. One plan may suggest a VPM service that would help (for example fresh video creative, a new campaign type, or landing page work) when the data supports it, framed as a recommendation, not a pitch.
+If results are down, say so in the headline or summary and put the fix in plans. Do not hide bad news.
+Return only JSON: {"headline": "", "summary": "", "progress": [{"title": "", "detail": ""}], "problems": [{"title": "", "detail": ""}], "plans": [{"title": "", "detail": ""}]}`;
 
 async function claudeWrite(facts, env, fetchFn) {
   const v = facts.numbers.value;
@@ -366,11 +378,10 @@ async function claudeWrite(facts, env, fetchFn) {
 const nodash = (s) => String(s || '').replace(/\s*[\u2014\u2013]\s*/g, ', ').replace(/,\s*,/g, ',').replace(/!/g, '.');
 export function tidy(t) {
   const arr = (a) => (Array.isArray(a) ? a : []);
+  const items = (a, n) => arr(a).slice(0, n).map((w) => (typeof w === 'string' ? { title: nodash(clip(w, 200)), detail: '' } : { title: nodash(clip(w.title, 120)), detail: nodash(clip(w.detail, 300)) }));
   return {
     headline: nodash(clip(t.headline, 160)), summary: nodash(clip(t.summary, 600)),
-    wins: arr(t.wins).slice(0, 4).map((w) => ({ title: nodash(clip(w.title, 120)), detail: nodash(clip(w.detail, 300)) })),
-    opportunities: arr(t.opportunities).slice(0, 3).map((w) => ({ title: nodash(clip(w.title, 120)), detail: nodash(clip(w.detail, 300)) })),
-    next_steps: arr(t.next_steps).slice(0, 4).map((s) => nodash(clip(typeof s === 'string' ? s : s.title || '', 200))),
+    progress: items(t.progress || t.wins, 4), problems: items(t.problems || t.opportunities, 3), plans: items(t.plans || t.next_steps, 4),
   };
 }
 
@@ -379,19 +390,21 @@ export function ruleWrite({ numbers: n, wins }) {
   const U = sing(n.label).toLowerCase(), UL = n.label.toLowerCase(), P = n.period_days || 30;
   const b = n.before, c = n.now;
   const bl = 'the ' + P + ' days before';
-  const out = { headline: '', summary: '', wins: [], opportunities: [], next_steps: [] };
+  const out = { headline: '', summary: '', progress: [], problems: [], plans: [] };
   const pct = (a, z) => (a && z ? Math.round(((z - a) / a) * 100) : null);
   const dCost = b && pct(b.cost_per_result, c.cost_per_result), dRes = b && b.results ? pct(b.results, c.results) : null;
   out.headline = c.results ? c.results + ' ' + UL + ' in the last ' + P + ' days' + (c.cost_per_result ? ', ' + money2(c.cost_per_result) + ' each' : '') : 'Your ads are live and learning';
   out.summary = 'In the last ' + P + ' days, ' + money(c.spend) + ' in ads brought in ' + c.results + ' ' + UL + '.' + (b && b.spend ? ' Compared with ' + bl + ', cost per ' + U + (dCost == null ? ' is not comparable yet.' : Math.abs(dCost) < 2 ? ' held steady.' : dCost <= 0 ? ' is down ' + -dCost + '%.' : ' is up ' + dCost + '%.') : '');
-  if (dRes != null && dRes > 0) out.wins.push({ title: dRes + '% more ' + UL, detail: b.results + ' in ' + bl + ', ' + c.results + ' in the last ' + P + ' days.' });
-  if (dCost != null && dCost <= -2) out.wins.push({ title: 'Each ' + U + ' costs ' + -dCost + '% less', detail: money2(b.cost_per_result) + ' before, ' + money2(c.cost_per_result) + ' now.' });
-  for (const w of wins.slice(-3).reverse()) if (out.wins.length < 3) out.wins.push({ title: w.title, detail: w.detail });
-  if (n.goal.cost_per_result && c.cost_per_result && c.cost_per_result > n.goal.cost_per_result) out.opportunities.push({ title: 'Bring cost per ' + U + ' under ' + money2(n.goal.cost_per_result), detail: 'It is ' + money2(c.cost_per_result) + ' now. We will move budget to the ads bringing the cheapest results.' });
-  if (n.goal.monthly_results && c.results < n.goal.monthly_results * (P / 30)) out.opportunities.push({ title: 'More ' + UL + ' each month', detail: 'We are at ' + Math.round(c.results / (P / 30)) + ' a month against a goal of ' + n.goal.monthly_results + '. Fresh creative and more reach close the gap.' });
-  if (out.opportunities.length < 2 && c.ctr != null && c.ctr < 0.02) out.opportunities.push({ title: 'Get more people to click', detail: (c.ctr * 100).toFixed(1) + '% of people who see the ads click. New hooks and headlines can lift this.' });
-  if (!out.opportunities.length) out.opportunities.push({ title: 'Grow what is working', detail: 'Results are on track, so we will add budget to the best campaigns step by step.' });
-  out.next_steps = ['Walk through this report together on our next call', 'Move budget toward the ads with the lowest cost per ' + U, 'Test new video hooks and headlines'];
+  if (dRes != null && dRes > 0) out.progress.push({ title: dRes + '% more ' + UL, detail: b.results + ' in ' + bl + ', ' + c.results + ' in the last ' + P + ' days.' });
+  if (dCost != null && dCost <= -2) out.progress.push({ title: 'Each ' + U + ' costs ' + -dCost + '% less', detail: money2(b.cost_per_result) + ' before, ' + money2(c.cost_per_result) + ' now.' });
+  for (const w of wins.slice(-3).reverse()) if (out.progress.length < 3) out.progress.push({ title: w.title, detail: w.detail });
+  if (dRes != null && dRes < -5) out.problems.push({ title: 'Fewer ' + UL + ' than before', detail: c.results + ' in the last ' + P + ' days against ' + b.results + ' in ' + bl + '.' });
+  if (dCost != null && dCost >= 5) out.problems.push({ title: 'Each ' + U + ' costs more', detail: money2(b.cost_per_result) + ' before, ' + money2(c.cost_per_result) + ' now.' });
+  if (n.goal.cost_per_result && c.cost_per_result && c.cost_per_result > n.goal.cost_per_result) out.problems.push({ title: 'Above the ' + money2(n.goal.cost_per_result) + ' goal', detail: 'Cost per ' + U + ' is ' + money2(c.cost_per_result) + ' right now.' });
+  if (out.problems.length < 2 && c.ctr != null && c.ctr < 0.02) out.problems.push({ title: 'Not enough people click', detail: (c.ctr * 100).toFixed(1) + '% of people who see the ads click.' });
+  out.plans.push({ title: 'Move budget to what works', detail: 'More spend on the ads bringing the lowest cost per ' + U + '.' });
+  out.plans.push({ title: 'Test fresh creative', detail: 'New video hooks and headlines to lift clicks and results.' });
+  out.plans.push({ title: 'Review together', detail: 'We will walk through this report on our next call.' });
   return out;
 }
 

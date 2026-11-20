@@ -68,7 +68,15 @@ export async function saveClients(list) {
 function match(list, token) {
   if (!token || !/^[A-Za-z0-9_-]{4,200}$/.test(token)) return null;
   const lower = token.toLowerCase();
-  return list.find((c) => !c.disabled && c.token && (c.token === token || (c.token === c.token.toLowerCase() && c.token === lower))) || null;
+  return resolveClient(list.find((c) => !c.disabled && c.token && (c.token === token || (c.token === c.token.toLowerCase() && c.token === lower))) || null, list);
+}
+// The test client borrows another client's Google Ads account, goals and settings (picked on /admin),
+// but keeps its own link and its own journey, so the team can try things without touching a real report.
+export function resolveClient(c, list) {
+  if (!c || !c.test) return c;
+  const m = list.find((x) => x.token === c.mirror && !x.test);
+  if (!m) return null;
+  return { ...m, name: 'Test client (' + m.name + ')', token: c.token, test: true, mirror: m.token, disabled: false };
 }
 export async function findClientAsync(token, env = process.env) { return match(await getClients(env), token); }
 

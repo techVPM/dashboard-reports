@@ -490,6 +490,7 @@ function vJourney() {
   var sinceL = J.launch ? Math.round((Date.parse(today + 'T00:00:00Z') - Date.parse(J.launch + 'T00:00:00Z')) / 864e5) : -1;
   var cur = sinceL < 0 ? 0 : sinceL <= 30 ? 2 : sinceL <= 90 ? 3 : sinceL <= 182 ? 4 : 5;
   if (sinceL >= 0 && sinceL <= 7) cur = 1;
+  if (J.stage != null) cur = J.stage;
   var T = J.totals;
   // hero
   out += '<div class="jhero"><div class="jtop"><div><p class="jk">Together since ' + esc(jDate(startD, 1)) + '</p><p class="jbig">' + together + ' <span>days</span></p></div>' +
@@ -506,33 +507,31 @@ function vJourney() {
   out += '<div class="panel"><div class="ph"><div><h2>Coming up next</h2><p class="sub">The next steps on the road</p></div></div>' + (next.length ? '<ul class="jnext">' + next.map(function (i) { return '<li>' + jIcon('next') + '<div><b>' + esc(i.title) + '</b>' + (i.why ? '<p>' + esc(i.why) + '</p>' : '') + (i.due ? '<span>Planned ' + esc(jDate(i.due, 1)) + '</span>' : '') + '</div></li>'; }).join('') + '</ul>' : '<p class="mut">Every milestone so far is done.</p>') + '</div>';
   out += '</div>';
 
-  // our story so far: done milestones and wins, oldest first
-  var story = J.items.filter(function (i) { return i.done && i.date; }).map(function (i) { return { date: i.date, title: i.title, kind: i.win ? 'star' : /report/.test(i.id) ? 'doc' : 'check', why: i.why, notes: i.notes }; })
-    .concat(J.wins.filter(function (w) { return ['first_result', 'under_goal', 'monthly_goal', 'roas_goal'].indexOf(w.id) < 0; }).map(function (w) { return { date: w.date, title: w.title, kind: 'star', why: w.detail, notes: [] }; }))
-    .sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
-  var seen = {}; story = story.filter(function (x) { var k = x.date + x.title; if (seen[k]) return false; seen[k] = 1; return true; });
-  if (story.length) out += '<div class="panel"><div class="ph"><div><h2>Our story so far</h2><p class="sub">Every milestone, in order</p></div></div><ol class="jstory">' + story.map(function (x) {
-    return '<li class="' + x.kind + '"><span class="jdot">' + jIcon(x.kind) + '</span><div><span class="jsd">' + esc(jDate(x.date, 1)) + '</span><b>' + esc(x.title) + '</b>' + (x.why ? '<p>' + esc(x.why) + '</p>' : '') + x.notes.map(function (n) { return '<p class="jin">' + esc(n.text).replace(/\n/g, '<br>') + '</p>'; }).join('') + '</div></li>';
-  }).join('') + '</ol></div>';
-
-  // notes
-  if (J.notes.length) out += panel('Notes from your VPM team', '', J.notes.map(function (n) { return '<div class="jnote"><p>' + esc(n.text).replace(/\n/g, '<br>') + '</p><small>' + esc(dlab(n.at, 1)) + '</small></div>'; }).join(''));
-
-  // check-in reports
+  // check-in reports, then the roadmap, then notes, and the full story last
   var ks = Object.keys(J.reports).sort(function (a, b) { return a - b; });
-  out += panel('Check-in reports', 'How the account compares with before we started', '<div class="jreps">' + ks.map(function (d) {
+  out += panel('Check-in reports', 'Each one compares a period with the same length just before it', '<div class="jreps">' + ks.map(function (d) {
     var r = J.reports[d];
     if (r.text) return '<button type="button" class="jrep ready" data-jrep="' + d + '">' + jIcon('doc') + '<b>' + esc(r.name) + ' report</b><span>' + esc(r.text.headline || '') + '</span><em>Read the report</em></button>';
     return '<div class="jrep">' + jIcon('doc') + '<b>' + esc(r.name) + ' report</b><span>' + (r.due ? (r.due <= today ? 'Coming soon' : 'Around ' + esc(jDate(r.due, 1))) : 'After the ads go live') + '</span></div>';
   }).join('') + '</div>');
-
-  // the road ahead: one card per stage
   out += '<div class="panel"><div class="ph"><div><h2>The roadmap</h2><p class="sub">Our first year together, stage by stage</p></div></div><div class="jroad">' + J.phases.map(function (p, idx) {
     var its = J.items.filter(function (i) { return i.phase === p.id; }); if (!its.length) return '';
     var nd = its.filter(function (i) { return i.done; }).length, pc = Math.round(nd / its.length * 100);
-    return '<div class="jstage' + (idx === cur ? ' now' : '') + (nd === its.length ? ' all' : '') + '"><div class="jsh"><b>' + esc(p.name) + '</b><span>' + nd + '/' + its.length + '</span></div><div class="jbar"><i style="width:' + pc + '%"></i></div><ul>' +
+    return '<div class="jstage' + (idx === cur ? ' now' : '') + (nd === its.length ? ' all' : '') + '"><div class="jsh"><b>' + esc(p.name) + '</b><span>' + (idx === cur ? '<em>You are here</em> ' : '') + nd + '/' + its.length + '</span></div><div class="jbar"><i style="width:' + pc + '%"></i></div><ul>' +
       its.map(function (i) { return '<li class="' + (i.done ? 'done' : '') + '">' + (i.done ? jIcon('check') : '<i class="jo"></i>') + '<span>' + esc(i.title) + '</span></li>'; }).join('') + '</ul></div>';
   }).join('') + '</div></div>';
+  if (J.notes.length) out += panel('Notes from your VPM team', '', J.notes.map(function (n) { return '<div class="jnote"><p>' + esc(n.text).replace(/\n/g, '<br>') + '</p><small>' + esc(dlab(n.at, 1)) + '</small></div>'; }).join(''));
+  // our story so far: newest first, compact, with the full list one click away
+  var story = J.items.filter(function (i) { return i.done && i.date; }).map(function (i) { return { date: i.date, title: i.title, kind: i.win ? 'star' : /report/.test(i.id) ? 'doc' : 'check', why: i.why, notes: i.notes }; })
+    .concat(J.wins.filter(function (w) { return ['first_result', 'under_goal', 'monthly_goal', 'roas_goal'].indexOf(w.id) < 0; }).map(function (w) { return { date: w.date, title: w.title, kind: 'star', why: w.detail, notes: [] }; }))
+    .sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+  var seen = {}; story = story.filter(function (x) { var k = x.date + x.title; if (seen[k]) return false; seen[k] = 1; return true; });
+  if (story.length) {
+    var showN = S.jall ? story.length : 6;
+    out += '<div class="panel"><div class="ph"><div><h2>Our story so far</h2><p class="sub">Every milestone, newest first</p></div></div><ol class="jstory sm">' + story.slice(0, showN).map(function (x) {
+      return '<li class="' + x.kind + '"><span class="jdot">' + jIcon(x.kind) + '</span><div><span class="jsd">' + esc(jDate(x.date, 1)) + '</span><b>' + esc(x.title) + '</b>' + (x.why ? '<p>' + esc(x.why) + '</p>' : '') + x.notes.map(function (n) { return '<p class="jin">' + esc(n.text).replace(/\n/g, '<br>') + '</p>'; }).join('') + '</div></li>';
+    }).join('') + '</ol>' + (story.length > 6 ? '<button type="button" class="jmore" data-jall="1">' + (S.jall ? 'Show fewer' : 'Show all ' + story.length + ' milestones') + '</button>' : '') + '</div>';
+  }
   return out;
 }
 function jReportHtml(r, U) {
@@ -552,7 +551,6 @@ function jPer(w, n, isNow) {
 }
 function openJReport(d) {
   var r = JRN && JRN.reports[d]; if (!r || !r.text) return;
-  var n = r.numbers || {}; if (n.value && n.before && n.now) { n.before._v = n.value.before ? n.value.before.amount : null; n.now._v = n.value.now.amount; }
-  var v = showModal(r.name + ' report: ' + (r.text.headline || ''), (JRN.client_name || '') + (r.generated_at ? ' · ' + dlab(r.generated_at, 1) : ''), 'mpage jmodal', '<a class="mbtn" href="/jreport.html?k=' + encodeURIComponent(KEY) + '&d=' + d + '" target="_blank" rel="noopener">Download PDF</a> <span>A branded copy to save or share</span>');
-  v.innerHTML = jReportHtml(r, JRN.label || 'Results');
+  var v = showModal(r.name + ' check-in report', (JRN.client_name || '') + (r.generated_at ? ' · ' + dlab(r.generated_at, 1) : ''), 'mpage jmodal', '<a class="mbtn" href="/jreport.html?k=' + encodeURIComponent(KEY) + '&d=' + d + '" target="_blank" rel="noopener">Download PDF</a> <span>A branded copy to save or share</span>');
+  v.innerHTML = JR.report(Object.assign({ name: r.name }, r), { label: JRN.label || 'Results' });
 }

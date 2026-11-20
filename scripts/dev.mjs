@@ -37,7 +37,7 @@ http.createServer(async (req, res) => {
     res.end(Buffer.from(await r.arrayBuffer()));
     return;
   }
-  let name = url.pathname === '/' ? 'index.html' : { '/team': 'team.html', '/admin': 'admin.html', '/creative': 'creative.html', '/business': 'business.html', '/profile': 'profile.html', '/billing': 'billing.html', '/journey': 'journey.html' }[url.pathname] || url.pathname;
+  let name = url.pathname === '/' ? 'index.html' : { '/team': 'team.html', '/admin': 'admin.html', '/creative': 'creative.html', '/business': 'business.html', '/profile': 'profile.html', '/billing': 'billing.html', '/journey': 'admin.html' }[url.pathname] || url.pathname;
   if (!existsSync(join(root, 'dist', name)) && /^\/[A-Za-z0-9_-]+\/?$/.test(name)) name = 'index.html'; // clean links like /coach-by-chris-1613
   const f = join(root, 'dist', name);
   if (existsSync(f) && f.startsWith(join(root, 'dist'))) { res.writeHead(200, { 'content-type': f.endsWith('.html') ? 'text/html; charset=utf-8' : 'text/plain' }); res.end(readFileSync(f)); }

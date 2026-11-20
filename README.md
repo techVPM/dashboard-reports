@@ -282,7 +282,7 @@ Each year has its own copy of the billing sheet. The 2027 sheet already exists (
 
 A living timeline of each partnership, from kickoff to the first year.
 
-- **Team page (/journey):** pick a client, set the kickoff date, switch the client's tab on or off, tick off the key milestones, add events like a video shoot or Meta launch, add notes, and choose for each step and note whether the client sees it.
+- **Team view (Clients and goals, Client journey tab):** pick a client, set the kickoff date, switch the client's tab on or off, tick off the key milestones, add events like a video shoot or Meta launch, add notes, and choose for each step and note whether the client sees it.
 - **Wins:** found in Google Ads automatically (first result, cost per result under the goal, the monthly goal reached, record weeks, running totals, better than before VPM). Hide any you do not want the client to see, or add your own.
 - **Check-in reports:** at 30 days, 90 days, 6 months and 1 year, Generate report compares that period with the same length just before it (30 days vs the 30 before, 90 vs the 90 before, and so on). Claude writes the wins, where to improve and next steps. You can reword it, and the client sees it only after you switch on Show to client.
 - **Client view:** the "Our journey" tab in each client report shows the shared steps, notes, top wins and shared reports.
@@ -292,6 +292,8 @@ Settings in Netlify:
 - `REFRESH_SECRET`: already set; the report is written by a background function that checks it.
 
 ## Version notes
+
+- **3.3.0**: The client journey moved into Clients and goals: each client has a Client dashboard tab and a Client journey tab, plus a Client journey switch next to Active client (the old /journey page redirects there). Any milestone can be edited or removed per client (and put back); automatic wins can be reworded. Ticking a milestone is instant with a progress bar, and the stage the client is in is highlighted. Check-in reports are now Progress, Problems and Plans with charts (results and cost per result by week or month against the period before), shown the same way in the client's report, the team view and the PDF. Kickoff date can be filled from the GoHighLevel start date. New Test client (Testing section in Clients and goals) mirrors any client's account and goals with its own link and journey. Client journey page order: highlights, coming up, check-in reports, roadmap, notes, then a compact story so far.
 
 - **3.2.0**: Check-in reports compare each period with the same length just before it (30 vs the 30 before, 90 vs the 90 before, and so on), written by Claude in the VPM brand voice and kept short. Download PDF gives a branded, printable copy (/jreport.html). Optional return in dollars per client (Google Ads sales value or an estimate from close rate and average sale). Link to the client's strategy and roadmap. The All clients page flags check-in reports due in the next 7 days or overdue.
 

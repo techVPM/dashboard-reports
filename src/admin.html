@@ -17,7 +17,7 @@
       <button type="button" class="mbtn full" data-new="1">+ Add a client</button>
       <ul id="clist"></ul>
     </aside>
-    <form class="panel cform" id="form" novalidate></form>
+    <div class="rcol"><form class="panel cform" id="form" novalidate></form><div id="jtab" class="jtab" hidden></div></div>
   </div>
 </div>
 <div class="modal" id="ask" hidden role="dialog" aria-modal="true" aria-labelledby="asktitle">
@@ -28,13 +28,14 @@
   </div>
 </div>
 </div>
+<!--JS:jrender,jeditor-->
 <script>
 (function () {
   'use strict';
   var KEY = 'vpm_admin_key', pw = '';
   try { pw = localStorage.getItem(KEY) || ''; } catch (e) { /* private mode */ }
   var $ = function (id) { return document.getElementById(id); };
-  var LIST = [], CUR = null, ORIG = null, SITE = location.origin, DIRTY = false, PENDING = null;
+  var LIST = [], CUR = null, ORIG = null, SITE = location.origin, DIRTY = false, PENDING = null, JOURNEYS = {}, TAB = 'dash', JED = null;
   var TZ = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific'], ['America/Anchorage', 'Alaska'], ['Pacific/Honolulu', 'Hawaii']];
   var TYPES = [['video', 'Video (YouTube and Demand Gen)'], ['search', 'Search'], ['pmax', 'Performance Max'], ['search+pmax', 'Search and Performance Max'], ['shopping', 'Shopping'], ['display', 'Display']];
   var TYPE_SHORT = { video: 'Video', search: 'Search', pmax: 'PMax', 'search+pmax': 'Search and PMax', shopping: 'Shopping', display: 'Display' };
@@ -55,11 +56,12 @@
   function load(pick) {
     if (!pw) return gate();
     api('/api/admin').then(function (j) {
-      LIST = j.clients || []; $('gate').hidden = true; $('gerr').hidden = true; $('app').hidden = false; $('out').hidden = false;
+      LIST = j.clients || []; JOURNEYS = j.journeys || {}; $('gate').hidden = true; $('gerr').hidden = true; $('app').hidden = false; $('out').hidden = false;
       var s = $('src'); s.hidden = j.source === 'admin';
       s.textContent = 'Right now the client list comes from ' + j.source + ' in GitHub. The first time you save here, this page takes over and clients.json is no longer used.';
-      var want = pick || (location.hash || '').slice(1);
-      var c = LIST.filter(function (x) { return x.token === want; })[0] || LIST.filter(function (x) { return !x.disabled; })[0] || LIST[0];
+      var hp = (location.hash || '').slice(1).split(':'), want = pick || hp[0];
+      if (!pick && hp[1] === 'journey') TAB = 'journey';
+      var c = LIST.filter(function (x) { return x.token === want; })[0] || LIST.filter(function (x) { return !x.disabled && !x.test; })[0] || LIST[0];
       edit(c || null);
     }).catch(function (e) { if (e && e.auth) gate('That password did not work.'); else alert(e.message); });
   }
@@ -82,9 +84,11 @@
   function drawList() {
     function item(c) { var s = summary(c); return '<li><button type="button" data-pick="' + esc(c.token) + '" class="' + (ORIG && ORIG === c.token ? 'on' : '') + '">' + esc(c.name) + '<small>' + esc(s.length ? s.slice(0, 2).join(' · ') : 'No goals yet') + '</small></button></li>'; }
     var srt = LIST.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+    var tst = srt.filter(function (c) { return c.test; }); srt = srt.filter(function (c) { return !c.test; });
     var act = srt.filter(function (c) { return !c.disabled; }), ina = srt.filter(function (c) { return c.disabled; });
     $('clist').innerHTML = '<li><h3>Active (' + act.length + ')</h3></li>' + act.map(item).join('') +
-      (ina.length ? '<li><details' + (CUR && CUR.disabled && ORIG ? ' open' : '') + '><summary>Inactive (' + ina.length + ')</summary><ul class="inact">' + ina.map(item).join('') + '</ul></details></li>' : '');
+      (ina.length ? '<li><details' + (CUR && CUR.disabled && ORIG ? ' open' : '') + '><summary>Inactive (' + ina.length + ')</summary><ul class="inact">' + ina.map(item).join('') + '</ul></details></li>' : '') +
+      '<li><h3>Testing</h3></li>' + (tst.length ? tst.map(function (c) { var m = LIST.filter(function (x) { return x.token === c.mirror; })[0]; return '<li><button type="button" data-pick="' + esc(c.token) + '" class="tstb' + (ORIG === c.token ? ' on' : '') + '">Test client<small>' + (m ? 'Mirrors ' + esc(m.name) : 'Pick a client to mirror') + '</small></button></li>'; }).join('') : '<li><button type="button" class="tstb" data-newtest="1">+ Set up a test client<small>Try reports and journeys without touching a real client</small></button></li>');
   }
 
   /* ---------- form pieces ---------- */
@@ -98,11 +102,13 @@
     return '<details class="fsec fold2"' + (open ? ' open' : '') + '><summary><h3>' + title + '</h3>' + (sub ? '<p>' + sub + '</p>' : '') + '</summary>' + body + '</details>';
   }
 
-  function edit(c) {
+  function edit(c, keepTab) {
+    if (JED) { JED.destroy(); JED = null; }
     CUR = c ? JSON.parse(JSON.stringify(c)) : { name: '', customer_id: '', timezone: 'America/Denver', goals: {} };
+    if (!keepTab && ORIG !== null && (!c || c.token !== ORIG)) TAB = 'dash';
     ORIG = c ? c.token : null; DIRTY = false;
-    try { history.replaceState(null, '', ORIG ? '#' + ORIG : location.pathname); } catch (e) { /* ignore */ }
     drawList();
+    if (CUR.test) return editTest();
     var g = CUR.goals || {}, sbt = g.spend_by_type || {}, note = (CUR.notes && CUR.notes[0] && CUR.notes[0].body) || '';
     var adv = {}; Object.keys(CUR).forEach(function (k) { if (FORM_KEYS.indexOf(k) < 0) adv[k] = CUR[k]; });
     var link = ORIG ? SITE + '/' + ORIG : '', sm = summary(CUR);
@@ -111,7 +117,9 @@
 
     $('form').innerHTML =
       '<div class="fhead"><div><h2>' + (ORIG ? esc(CUR.name) : 'New client') + '</h2>' + (sm.length ? '<p class="glance">' + sm.map(esc).join(' · ') + '</p>' : '') + '</div>' +
-        '<div class="fhbtns">' + (link && !CUR.disabled ? '<a class="obtn" href="' + esc(link) + '" target="_blank" rel="noopener">Open report</a>' : '') + '<label class="activetog"><input type="checkbox" id="f_active"' + (CUR.disabled ? '' : ' checked') + '><span>Active client</span></label></div></div>' +
+        '<div class="fhbtns">' + (link && !CUR.disabled ? '<a class="obtn" href="' + esc(link) + '" target="_blank" rel="noopener">Open report</a>' : '') + '<label class="activetog"><input type="checkbox" id="f_active"' + (CUR.disabled ? '' : ' checked') + '><span>Active client</span></label>' +
+        (ORIG ? '<label class="activetog jtog" title="Shows the Our journey tab in this client\'s report"><input type="checkbox" id="f_journey"' + (JOURNEYS[ORIG] ? ' checked' : '') + '><span>Client journey</span></label>' : '') + '</div></div>' +
+      (ORIG ? tabsBar() : '') + '<div id="dashbody"' + (TAB === 'journey' ? ' hidden' : '') + '>' +
       (link ? '<p class="linkline">Client link: <b>' + esc(link) + '</b> <button type="button" class="tlink" data-copy="' + esc(link) + '">Copy link</button> <button type="button" class="tlink" data-copy="' + esc(embedCode(link, CUR.name)) + '" title="Paste into a Custom HTML or Code element on the client\'s GoHighLevel portal page">Copy embed code</button>' + (ORIG ? ' <a class="tlink" href="/profile?c=' + encodeURIComponent(ORIG) + '">Client profile</a>' : '') + (CUR.disabled ? ' <span class="pill early">Turned off while inactive</span>' : '') + '</p>' : '') +
 
       (ORIG ? '' : '<div class="tpls"><b>Start from a template</b><div class="tplbtns">' + TEMPLATES.map(function (t, i) { return '<button type="button" class="tpl" data-tpl="' + i + '"><b>' + t.name + '</b><small>' + t.sub + '</small></button>'; }).join('') + '</div></div>') +
@@ -163,9 +171,46 @@
       section('Advanced (for developers)', 'Other settings as JSON', ta('Other settings', 'x_adv', JSON.stringify(adv, null, 2), 'outcomes, labels, targets, term_groups, actions, conversion_field and so on. Leave as is if unsure.', 8), false, true) +
 
       '<div class="savebar"><span class="dirty" id="dirty" hidden>Unsaved changes</span><p class="err" id="ferr" hidden></p><p class="ok" id="fok" hidden></p><span class="sp"></span>' +
-        (ORIG ? '<button type="button" class="obtn danger" data-del="1">Delete</button>' : '') + '<button type="submit" class="mbtn">' + (ORIG ? 'Save changes' : 'Add client') + '</button></div>';
+        (ORIG ? '<button type="button" class="obtn danger" data-del="1">Delete</button>' : '') + '<button type="submit" class="mbtn">' + (ORIG ? 'Save changes' : 'Add client') + '</button></div></div>';
     loadConversions();
     loadGhl();
+    showTab();
+  }
+  /* ---------- tabs: client dashboard settings and client journey ---------- */
+  function tabsBar() {
+    return '<div class="ctabs" role="tablist"><button type="button" role="tab" data-tab="dash" aria-selected="' + (TAB === 'dash') + '" class="' + (TAB === 'dash' ? 'on' : '') + '">Client dashboard</button><button type="button" role="tab" data-tab="journey" aria-selected="' + (TAB === 'journey') + '" class="' + (TAB === 'journey' ? 'on' : '') + '">Client journey' + (JOURNEYS[ORIG] ? ' <span class="pill good">on</span>' : '') + '</button>' +
+      (TAB === 'journey' ? '<a class="tlink ctlink" href="' + esc(SITE + '/' + ORIG + '#journey') + '" target="_blank" rel="noopener">Open client view</a>' : '') + '</div>';
+  }
+  function showTab() {
+    try { history.replaceState(null, '', ORIG ? '#' + ORIG + (TAB === 'journey' ? ':journey' : '') : location.pathname); } catch (e) { /* ignore */ }
+    var j = TAB === 'journey' && ORIG;
+    var db = $('dashbody'); if (db) db.hidden = !!j;
+    $('jtab').hidden = !j;
+    if (j && !JED) JED = VPMJourney.mount($('jtab'), ORIG, { pw: pw, onAuth: function () { gate('Your password no longer works.'); } });
+    if (!j && JED) { JED.destroy(); JED = null; $('jtab').innerHTML = ''; }
+  }
+  function setTab(t) {
+    if (t === TAB) return;
+    var go = function () { TAB = t; var tb = document.querySelector('.ctabs'); if (tb) tb.outerHTML = tabsBar(); showTab(); };
+    if (t === 'journey' && DIRTY) return guard(function () { DIRTY = false; edit(LIST.filter(function (x) { return x.token === ORIG; })[0], true); go(); });
+    go();
+  }
+  function setJourney(on) {
+    JOURNEYS[ORIG] = on;
+    var req = JED ? JED.setEnabled(on) : api('/api/journey', { method: 'POST', body: JSON.stringify({ token: ORIG, action: 'enabled', enabled: on }) });
+    Promise.resolve(req).then(function () { var tb = document.querySelector('.ctabs'); if (tb) tb.outerHTML = tabsBar(); }).catch(function (er) { JOURNEYS[ORIG] = !on; $('f_journey').checked = !on; alert(er.message || 'Could not save.'); });
+  }
+  /* ---------- the test client: borrows a real client's account and goals, keeps its own link and journey ---------- */
+  function editTest() {
+    var real = LIST.filter(function (x) { return !x.test; }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+    var link = ORIG ? SITE + '/' + ORIG : '', m = LIST.filter(function (x) { return x.token === CUR.mirror; })[0];
+    $('form').innerHTML = '<div class="fhead"><div><h2>Test client</h2><p class="glance">' + (m ? 'Mirroring ' + esc(m.name) + ': same Google Ads account, goals and conversions, with its own link and its own journey.' : 'Pick a client to mirror.') + '</p></div>' +
+      '<div class="fhbtns">' + (link && m ? '<a class="obtn" href="' + esc(link) + '" target="_blank" rel="noopener">Open test report</a>' : '') + (ORIG && m ? '<label class="activetog jtog"><input type="checkbox" id="f_journey"' + (JOURNEYS[ORIG] ? ' checked' : '') + '><span>Client journey</span></label>' : '') + '</div></div>' +
+      (ORIG && m ? tabsBar() : '') + '<div id="dashbody"' + (TAB === 'journey' && ORIG && m ? ' hidden' : '') + '>' +
+      section('Mirror a client', 'The test report shows this client\'s real numbers. Changes to the test journey never touch theirs.', '<div class="fgrid"><label class="fld wide"><span>Client to mirror</span><select id="f_mirror">' + (CUR.mirror ? '' : '<option value="">Pick a client</option>') + real.map(function (x) { return '<option value="' + esc(x.token) + '"' + (x.token === CUR.mirror ? ' selected' : '') + '>' + esc(x.name) + (x.disabled ? ' (inactive)' : '') + '</option>'; }).join('') + '</select></label></div>') +
+      (link ? '<p class="linkline">Test link: <b>' + esc(link) + '</b> <button type="button" class="tlink" data-copy="' + esc(link) + '">Copy link</button></p>' : '') +
+      '<div class="savebar"><span class="dirty" id="dirty" hidden>Unsaved changes</span><p class="err" id="ferr" hidden></p><p class="ok" id="fok" hidden></p><span class="sp"></span>' + (ORIG ? '<button type="button" class="obtn danger" data-del="1">Delete</button>' : '') + '<button type="submit" class="mbtn">Save</button></div></div>';
+    showTab();
   }
   function embedCode(link, name) { return '<iframe src="' + link + '" title="' + String(name || 'Ad report').replace(/"/g, '') + ' ad report" style="width:100%;min-height:2400px;border:0" loading="lazy"></iframe>'; }
   /* ---------- GoHighLevel contact picker ---------- */
@@ -259,13 +304,14 @@
     { name: 'Lead gen', sub: 'Judged on cost per lead and leads per month.', apply: function () { $('f_scope').value = 'all'; $('g_lbl').value = 'Leads'; $('g_volp').value = 'month'; return $('g_cpa'); } }
   ];
   function setDirty(v) { DIRTY = v; var d = $('dirty'); if (d) d.hidden = !v; if (v) { var ok = $('fok'); if (ok) ok.hidden = true; } }
-  $('form').addEventListener('input', function () { setDirty(true); });
-  $('form').addEventListener('change', function (e) { setDirty(true); if (e.target.id === 'f_cid') { loadConversions(); ghlInfo(); } if (e.target.id === 'f_ghl') { ghlFill(false); ghlInfo(); } if (e.target.id === 'g_focus' || e.target.id === 'g_sec') drawPicker(); });
+  $('form').addEventListener('input', function (e) { if (e.target.id === 'f_journey') return; setDirty(true); });
+  $('form').addEventListener('change', function (e) { if (e.target.id === 'f_journey') return setJourney(e.target.checked); setDirty(true); if (e.target.id === 'f_cid') { loadConversions(); ghlInfo(); } if (e.target.id === 'f_ghl') { ghlFill(false); ghlInfo(); } if (e.target.id === 'g_focus' || e.target.id === 'g_sec') drawPicker(); });
 
   function val(id) { var el = $(id); return el ? el.value.trim() : ''; }
   function numv(id) { var v = val(id).replace(/[$,]/g, ''); return v === '' ? undefined : Number(v); }
   function lines(id) { return val(id).split('\n').map(function (x) { return x.trim(); }).filter(Boolean); }
   function collect() {
+    if (CUR.test) { if (!val('f_mirror')) throw new Error('Pick a client to mirror.'); return { name: 'Test client', token: 'test-client', test: true, mirror: val('f_mirror') }; }
     var adv = {}, a = val('x_adv');
     if (a) { try { adv = JSON.parse(a); } catch (e) { throw new Error('Advanced settings are not valid JSON.'); } }
     var c = Object.assign({}, adv);
@@ -301,7 +347,7 @@
     var c; try { c = collect(); } catch (er) { msg('ferr', er.message); return Promise.reject(er); }
     var b = $('form').querySelector('[type=submit]'); b.disabled = true;
     return api('/api/admin', { method: 'POST', body: JSON.stringify({ action: 'save', client: c, original_token: ORIG }) })
-      .then(function (j) { LIST = j.clients; $('src').hidden = true; edit(j.client); msg('fok', 'Saved. ' + (j.warmed ? 'The report is refreshing and will be ready in a minute or two.' : 'The report updates the next time it loads.')); })
+      .then(function (j) { LIST = j.clients; $('src').hidden = true; edit(j.client, true); msg('fok', 'Saved. ' + (j.warmed ? 'The report is refreshing and will be ready in a minute or two.' : 'The report updates the next time it loads.')); })
       .catch(function (er) { b.disabled = false; if (er && er.auth) gate('Your password no longer works.'); else msg('ferr', er.message); throw er; });
   }
   $('form').addEventListener('submit', function (e) { e.preventDefault(); save().catch(function () { /* shown */ }); });
@@ -323,7 +369,9 @@
 
   document.addEventListener('click', function (e) {
     var a = e.target.closest('a.tlink, a.itab'); if (a && DIRTY && a.getAttribute('href')) { e.preventDefault(); return guard(function () { DIRTY = false; location.href = a.getAttribute('href'); }); }
-    var t = e.target.closest('[data-pick],[data-new],[data-del],[data-copy],[data-addsplit],[data-rmsplit],[data-ask],[data-cv],[data-tpl],[data-ghlfill],[data-ghlpick]'); if (!t) return;
+    var t = e.target.closest('[data-pick],[data-new],[data-del],[data-copy],[data-addsplit],[data-rmsplit],[data-ask],[data-cv],[data-tpl],[data-ghlfill],[data-ghlpick],[data-tab],[data-newtest]'); if (!t) return;
+    if (t.dataset.tab) return setTab(t.dataset.tab);
+    if (t.dataset.newtest) return guard(function () { ORIG = null; CUR = { test: true, name: 'Test client' }; TAB = 'dash'; drawList(); editTest(); });
     if (t.dataset.ghlfill) return ghlFill(true);
     if (t.dataset.ghlpick) { $('f_ghl').value = t.dataset.ghlpick; setDirty(true); return ghlInfo(); }
     if (t.dataset.cn != null && t.dataset.cv != null) return setConv(t.dataset.cn, t.dataset.cv);

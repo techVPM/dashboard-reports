@@ -743,12 +743,13 @@ test('journey finds wins from the history and hides team-only parts from the cli
 
 test('journey report text: rules fallback and no dashes from Claude', async () => {
   const J = await import('../netlify/lib/journey.mjs');
-  const t = J.tidy({ headline: 'Up 40% — great', summary: 'a – b', wins: [{ title: 'W', detail: 'd' }], opportunities: [], next_steps: ['x'] });
+  const t = J.tidy({ headline: 'Up 40% \u2014 great', summary: 'a \u2013 b', wins: [{ title: 'W', detail: 'd' }], opportunities: [], next_steps: ['x'] });
+  assert.equal(t.progress[0].title, 'W'); assert.equal(t.plans[0].title, 'x', 'older reports map onto progress, problems and plans');
   assert.ok(!/[–—]/.test(JSON.stringify(t)));
   const r = J.ruleWrite({ numbers: { label: 'Leads', period_days: 30, launch: '2026-07-01', since_launch: { spend: 1000, results: 10 }, before: { kind: 'previous', spend: 1000, results: 5, cost_per_result: 200 }, now: { spend: 1000, results: 10, cost_per_result: 100, ctr: 0.01 }, goal: { cost_per_result: 80 } }, wins: [] });
   assert.match(r.summary, /down 50%/);
   assert.match(r.summary, /30 days before/);
-  assert.ok(r.opportunities.length && r.next_steps.length);
+  assert.ok(r.problems.length && r.plans.length && r.progress.length);
 });
 
 test('check-in reports compare each period with the same length just before it', async () => {
@@ -764,7 +765,8 @@ test('check-in reports compare each period with the same length just before it',
   const r = await J.makeReport({ client, st, days: 90, env: { VPM_DEV: '1' } });
   assert.equal(r.numbers.before.kind, 'previous'); assert.equal(r.numbers.now.days, 90); assert.equal(r.numbers.before.days, 90);
   assert.ok(r.numbers.value.now.estimate && r.numbers.value.now.amount > 0);
-  assert.ok(r.text.next_steps.length <= 4 && r.text.wins.length <= 4);
+  assert.ok(r.text.plans.length <= 4 && r.text.progress.length <= 4);
+  assert.equal(r.numbers.series.step, 7); assert.ok(r.numbers.series.now.length >= 12 && r.numbers.series.before.length >= 12);
 });
 
 test('return in dollars is optional and needs its inputs', async () => {

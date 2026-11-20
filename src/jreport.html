@@ -52,10 +52,12 @@
   @media print{html,body{background:#fff}.bar{display:none}.page{margin:0;box-shadow:none;max-width:none}header{-webkit-print-color-adjust:exact;print-color-adjust:exact}.wins li,.opps li,.steps li::before,h2 i{-webkit-print-color-adjust:exact;print-color-adjust:exact}li,table,.cards{break-inside:avoid}}
   @media (max-width:640px){header{flex-direction:column;align-items:flex-start;padding:20px}.who{text-align:left}main{padding:20px}.cards{grid-template-columns:1fr}footer{padding:12px 20px}}
 </style>
+<style><!--JRCSS--></style>
 </head>
 <body>
 <div class="bar"><button type="button" id="dl">Download PDF</button><span>Choose "Save as PDF" in the print window.</span></div>
 <div id="root"><p class="msg">Loading the report</p></div>
+<script><!--JRJS--></script>
 <script>
 (function () {
   'use strict';
@@ -73,23 +75,9 @@
     var r = J.reports && J.reports[d];
     if (!r || !r.text) { document.getElementById('root').innerHTML = '<p class="msg">' + esc(J.error || 'This report is not available.') + '</p>'; return; }
     document.title = (J.client_name || '') + ' ' + r.name + ' report | Video Power Marketing';
-    var n = r.numbers || {}, b = n.before || {}, c = n.now || {}, t = r.text, U = n.label || J.label || 'Results', P = n.period_days || d, prevK = b.kind === 'previous';
-    var chg = function (a, z, lowerBetter) { if (a == null || z == null || !a) return ''; var p = Math.round((z - a) / a * 100); if (!p) return 'Same as before'; var good = lowerBetter ? p < 0 : p > 0; return '<b class="' + (good ? 'up' : 'dn') + '">' + (p > 0 ? '+' : '') + p + '%</b> vs the ' + P + ' days before'; };
-    var cards = '<div class="card"><div class="l">' + esc(U) + '</div><div class="v">' + int(c.results) + '</div><div class="d">' + chg(b.results, c.results) + '</div></div>' +
-      '<div class="card"><div class="l">Cost per ' + esc(sing(U)) + '</div><div class="v">' + money2(c.cost_per_result) + '</div><div class="d">' + chg(b.cost_per_result, c.cost_per_result, 1) + '</div></div>' +
-      (n.value ? '<div class="card"><div class="l">' + (n.value.now.estimate ? 'Estimated sales' : 'Sales from the ads') + '</div><div class="v">' + money(n.value.now.amount) + '</div><div class="d">' + n.value.now.roi.toFixed(1) + 'x return on ad spend</div></div>'
-        : '<div class="card"><div class="l">Invested in ads</div><div class="v">' + money(c.spend) + '</div><div class="d">' + chg(b.spend, c.spend) + '</div></div>');
-    var row = function (l, f, a, z) { return '<tr><td>' + l + '</td><td>' + (a != null ? f(a) : 'n/a') + '</td><td>' + (z != null ? f(z) : 'n/a') + '</td></tr>'; };
-    var table = '<table><thead><tr><th></th><th>' + (prevK ? 'The ' + P + ' days before' : 'Before') + '<small>' + dl(b.from) + ' to ' + dl(b.to, 1) + '</small></th><th>' + (n.early ? 'Last ' : 'These ') + P + ' days<small>' + dl(c.from) + ' to ' + dl(c.to, 1) + '</small></th></tr></thead><tbody>' +
-      row('Ad spend', money, b.spend, c.spend) + row(esc(U), int, b.results, c.results) + row('Cost per ' + esc(sing(U)), money2, b.cost_per_result, c.cost_per_result) + row('Clicks', int, b.clicks, c.clicks) + row('Cost per click', money2, b.cpc, c.cpc) +
-      (n.value ? row(n.value.now.estimate ? 'Estimated sales' : 'Sales from the ads', money, n.value.before ? n.value.before.amount : null, n.value.now.amount) : (c.roas || b.roas) ? row('Return on ad spend', function (v) { return v.toFixed(1) + 'x'; }, b.roas, c.roas) : '') + '</tbody></table>';
-    var list = function (arr, cls) { return '<ul class="' + cls + '">' + (arr || []).map(function (x) { return typeof x === 'string' ? '<li><span>' + esc(x) + '</span></li>' : '<li><b>' + esc(x.title) + '</b>' + esc(x.detail || '') + '</li>'; }).join('') + '</ul>'; };
+    var c = (r.numbers || {}).now || {};
     document.getElementById('root').innerHTML = '<div class="page"><header><div class="brand">VIDEO POWER<span>MARKETING</span></div><div class="who"><b>' + esc(J.client_name) + '</b><span>' + esc(r.name) + ' check-in · ' + dl(c.from) + ' to ' + dl(c.to, 1) + '</span></div></header><main>' +
-      '<p class="kick">' + esc(r.name) + ' check-in report</p><h1>' + esc(t.headline) + '</h1><p class="sum">' + esc(t.summary) + '</p>' +
-      '<div class="cards">' + cards + '</div>' + table +
-      (t.wins && t.wins.length ? '<h2 class="w"><i></i>Wins</h2>' + list(t.wins, 'wins') : '') +
-      (t.opportunities && t.opportunities.length ? '<h2 class="o"><i></i>Where we can improve</h2>' + list(t.opportunities, 'opps') : '') +
-      (t.next_steps && t.next_steps.length ? '<h2 class="n"><i></i>Our next steps</h2>' + list(t.next_steps, 'steps') : '') +
+      JR.report(r, { label: J.label, openTable: true }) +
       '</main><footer><span>Prepared for ' + esc(J.client_name) + ' by Video Power Marketing</span><span>' + new Date(r.generated_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) + '</span></footer></div>';
     if (q.get('print') === '1') setTimeout(function () { window.print(); }, 600);
   }).catch(function () { document.getElementById('root').innerHTML = '<p class="msg">Could not load the report.</p>'; });

@@ -5,6 +5,7 @@
 // Saved changes go to Netlify storage and are used instead of clients.json from then on.
 import { getClientsWithSource, saveClients, RESERVED } from '../lib/store.mjs';
 import { cleanGoals } from '../lib/goals.mjs';
+import { loadJourney } from '../lib/journey.mjs';
 import { isAdmin, jsonRes } from '../lib/auth.mjs';
 import { runQuery, digits } from '../lib/ads.mjs';
 import { savedBusiness, refreshBusiness } from '../lib/business.mjs';
@@ -45,6 +46,14 @@ export const makeToken = (name, id) => String(name || '').toLowerCase().replace(
 export function validate(c, list, original) {
   const errs = [];
   if (!c || typeof c !== 'object') return ['Missing client details.'];
+  if (c.test) {
+    // the test client only stores which real client it mirrors
+    if (!list.some((x) => x.token === c.mirror && !x.test)) return ['Pick a client for the test client to mirror.'];
+    for (const k of Object.keys(c)) if (!['name', 'token', 'test', 'mirror'].includes(k)) delete c[k];
+    c.name = 'Test client'; c.token = 'test-client';
+    if (list.some((x) => x.token === c.token && !x.test)) return ['Another client already uses the link key test-client.'];
+    return [];
+  }
   c.name = String(c.name || '').trim();
   c.customer_id = String(c.customer_id || '').trim();
   const d = c.customer_id.replace(/\D/g, '');
@@ -97,7 +106,12 @@ export default async (req) => {
     catch (e) { return jsonRes({ error: e.message, contacts: [] }, e.status === 503 ? 503 : 502); }
   }
   const { clients, source, saved_at } = await getClientsWithSource();
-  if (req.method === 'GET') return jsonRes({ clients, source, saved_at: saved_at || null });
+  if (req.method === 'GET') {
+    // which clients have the "Our journey" tab switched on
+    const journeys = {};
+    await Promise.all(clients.map(async (c) => { try { journeys[c.token] = !!(await loadJourney(c.token)).enabled; } catch { journeys[c.token] = false; } }));
+    return jsonRes({ clients, source, saved_at: saved_at || null, journeys });
+  }
   if (req.method !== 'POST') return jsonRes({ error: 'Not allowed.' }, 405);
   let body = {};
   try { body = await req.json(); } catch { return jsonRes({ error: 'Bad request.' }, 400); }

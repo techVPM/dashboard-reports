@@ -20,8 +20,8 @@
 
 [[redirects]]
   from = "/journey"
-  to = "/journey.html"
-  status = 200
+  to = "/admin"
+  status = 301
 
 [[redirects]]
   from = "/profile"

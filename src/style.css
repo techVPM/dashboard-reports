@@ -552,3 +552,13 @@
 .vpm .jmap:hover{background:rgba(255,255,255,.18)}
 .vpm .jmap svg{width:18px;height:18px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .vpm .jcmp small{font-weight:400}
+.vpm .jstory.sm li{padding-bottom:12px}
+.vpm .jstory.sm .jdot{width:24px;height:24px}
+.vpm .jstory.sm .jdot svg{width:13px;height:13px}
+.vpm .jstory.sm::before{left:11px}
+.vpm .jstory.sm b{font-size:14.5px}
+.vpm .jstory.sm p{font-size:13px}
+.vpm .jstory.sm li > div{padding-top:1px}
+.vpm .jmore{margin-top:12px;background:none;border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-weight:700;color:var(--c1);cursor:pointer}
+.vpm .jsh em{font-style:normal;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#fff;background:#BA2025;border-radius:5px;padding:2px 6px;margin-right:4px}
+.vpm .mpage.jmodal{background:#fff;color:#2A2A2A;padding:16px 18px}

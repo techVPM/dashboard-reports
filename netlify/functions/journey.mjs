@@ -2,8 +2,10 @@
 // GET  /api/journey?token=<key>  (x-admin-key)         everything, for the team page (/journey)
 // GET  /api/journey?list=1       (x-admin-key)         the clients, for the picker
 // POST /api/journey              (x-admin-key)         {token, action, ...} edits; see ACTIONS below
-import { getClients, findClientAsync } from '../lib/store.mjs';
+import { getClients, findClientAsync, resolveClient } from '../lib/store.mjs';
 import { isAdmin, jsonRes } from '../lib/auth.mjs';
+import { savedBusiness } from '../lib/business.mjs';
+import { bizByToken } from '../lib/team.mjs';
 import { loadJourney, saveJourney, history, view, makeReport, launchDate, cleanValue, TEMPLATE, PHASES, CHECKPOINTS, isDate, newId } from '../lib/journey.mjs';
 
 const DEMO = { name: 'Sample Coaching Co', token: 'demo-calls', timezone: 'America/Denver' };
@@ -27,7 +29,8 @@ export default async (req) => {
     let client, st;
     if (k === 'demo' || k === 'demo-calls') { client = { ...DEMO, token: k }; st = demoState(); }
     else {
-      client = token ? (await getClients()).find((c) => c.token === token) : await findClientAsync(k);
+      const all = await getClients();
+      client = token ? resolveClient(all.find((c) => c.token === token), all) : await findClientAsync(k);
       if (!client) return jsonRes({ error: 'This link is not valid.' }, 404);
       st = await loadJourney(client.token);
     }
@@ -38,15 +41,24 @@ export default async (req) => {
     const LA = h ? launchDate(h, { ...st, launch: '' }) : null;
     if (LA && LA !== st.launch_auto && k !== 'demo' && k !== 'demo-calls') { st.launch_auto = LA; await saveJourney(client.token, st).catch(() => {}); }
     const out = view(client, st, h, { team: !!token });
-    if (token) out.history_error = herr;
+    if (token) {
+      out.history_error = herr;
+      // filled in from Clients and goals and GoHighLevel, for the team to use with one click
+      const all = await getClients();
+      const raw = all.find((c) => c.token === token) || {};
+      const biz = await savedBusiness().then((b) => bizByToken(b?.snap, all).get(raw.test ? raw.mirror : token)).catch(() => null);
+      out.suggest = { kickoff: biz && biz.start ? biz.start : '', drive_url: client.drive_url || '' };
+      out.test = !!client.test;
+    }
     return jsonRes(out);
   }
 
   if (req.method !== 'POST') return jsonRes({ error: 'Not allowed.' }, 405);
   if (!admin) return jsonRes({ error: 'Wrong password.' }, 401);
   let b; try { b = await req.json(); } catch { return jsonRes({ error: 'Bad request.' }, 400); }
-  const client = (await getClients()).find((c) => c.token === b.token);
-  if (!client) return jsonRes({ error: 'Client not found.' }, 404);
+  const all = await getClients();
+  const client = resolveClient(all.find((c) => c.token === b.token), all);
+  if (!client) return jsonRes({ error: 'Client not found (a test client needs a client to mirror).' }, 404);
   const st = await loadJourney(client.token);
   const date = (v) => (v === '' || v == null ? '' : isDate(v) ? v : null);
   const bad = (m) => jsonRes({ error: m }, 400);
@@ -75,6 +87,8 @@ export default async (req) => {
       if ('due' in b) { const d = date(b.due); if (d === null) return bad('Dates should look like 2026-11-20.'); s.due = d; }
       if ('client' in b) s.client = !!b.client;
       if ('title' in b) s.title = txt(b.title, 120) || undefined;
+      if ('why' in b) s.why = b.why == null ? undefined : txt(b.why, 240);
+      if ('removed' in b) s.removed = !!b.removed || undefined;
       st.items[b.id] = s;
       break;
     }
@@ -97,7 +111,16 @@ export default async (req) => {
       break;
     }
     case 'note_delete': st.notes = st.notes.filter((n) => n.id !== b.id); break;
-    case 'win': { const set = new Set(st.hidden_wins || []); if (b.hidden) set.add(String(b.id)); else set.delete(String(b.id)); st.hidden_wins = [...set]; break; }
+    case 'win': { // hide or show an automatic win, or reword it
+      const id = String(b.id);
+      if ('hidden' in b) { const set = new Set(st.hidden_wins || []); if (b.hidden) set.add(id); else set.delete(id); st.hidden_wins = [...set]; }
+      if ('title' in b || 'detail' in b) {
+        st.win_edits = st.win_edits || {};
+        if (b.reset) delete st.win_edits[id];
+        else { const title = txt(b.title, 140); if (!title) return bad('Give the win a title.'); st.win_edits[id] = { title, detail: txt(b.detail, 400) }; }
+      }
+      break;
+    }
     case 'report': {
       const days = Number(b.days); if (!CHECKPOINTS.some(([d]) => d === days)) return bad('Pick a checkpoint.');
       st.reports[days] = { ...(st.reports[days] || {}), status: 'working', started_at: Date.now() };

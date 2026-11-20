@@ -61,7 +61,7 @@ export default async (req) => {
     }
   }));
   // client journey check-ins due in the next 7 days (or up to 30 days late) that have not been made yet
-  const checkins = (await Promise.all(all.filter((c) => c.token && !c.disabled).map(async (c) => {
+  const checkins = (await Promise.all(all.filter((c) => c.token && !c.disabled && !c.test).map(async (c) => {
     try { return checkinsDue(await loadJourney(c.token), todayIn(c.timezone)).map((x) => ({ ...x, token: c.token, name: c.name })); } catch { return []; }
   }))).flat().sort((a, b) => (a.due < b.due ? -1 : 1));
   return jsonRes({ generated_at: new Date().toISOString(), days, inactive: all.length - active.length, clients: rows, checkins, business_linked: !!bizHit?.snap });

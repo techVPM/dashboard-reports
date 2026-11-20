@@ -143,8 +143,9 @@ function load() {
 
 /* ---------- events ---------- */
 root.addEventListener('click', function (e) {
-  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-ai],[data-lp],[data-page],[data-close],[data-burger],[data-scope],[data-ps],[data-jrep]'); if (!t || !root.contains(t)) return;
+  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-ai],[data-lp],[data-page],[data-close],[data-burger],[data-scope],[data-ps],[data-jrep],[data-jall]'); if (!t || !root.contains(t)) return;
   if (t.dataset.jrep) return openJReport(t.dataset.jrep);
+  if (t.dataset.jall) { S.jall = !S.jall; var yy = window.scrollY; render(); window.scrollTo(0, yy); return; }
   if (t.tagName === 'A') e.preventDefault();
   if (t.dataset.range) {
     var m = t.dataset.range;
