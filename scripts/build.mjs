@@ -7,7 +7,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const rd = (f) => readFileSync(join(root, 'src', f), 'utf8');
 const css = rd('style.css') + '\n' + rd('jrender.css');
 const body = rd('body.html');
-const js = ['core.js', 'insights.js', 'charts.js', 'jrender.js', 'views.js', 'app.js'].map(rd).join('\n');
+const js = ['core.js', 'insights.js', 'charts.js', 'jrender.js', 'views.js', 'platforms.js', 'app.js'].map(rd).join('\n');
 const fonts = `<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Source+Sans+3:wght@400;600;700&display=swap">`;

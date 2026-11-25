@@ -291,7 +291,7 @@ function plainWords(A, L) {
 function vOverview() {
   var L = list(), A = agg(L); charts = [{ id: 'o', A: A }];
   var D = computeInsights();
-  return plainWords(A, L) + kpiBlock(A) + goalsPanel(A) +
+  return metaStrip() + plainWords(A, L) + kpiBlock(A) + goalsPanel(A) +
     chartCard('o', 'Spend and results over time', 'Daily trend for the selected range.', A) +
     panel('Key insights', 'The short version. <a href="#insights" class="lnk" data-go="insights">See wins and our next step</a>', '<div class="inslist">' + D.insights.slice(0, 3).map(insightCard).join('') + '</div>') +
     '<div class="two">' + splitPanel(L) + actionsPanel(1) + '</div>';

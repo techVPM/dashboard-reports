@@ -32,7 +32,7 @@ export function presetRange(days, tz) {
 // DATA_VERSION (set in ads.mjs) is part of the key, so saved reports built by older code are not reused.
 export { DATA_VERSION };
 function fingerprint(client) {
-  const s = JSON.stringify([DATA_VERSION, client.name, client.outcomes, client.deal_value, client.conversion_field, client.labels, client.targets, client.notes, client.actions, client.term_groups, client.timezone, client.currency, client.last_change_date, client.goals, client.include_paused, client.default_scope]);
+  const s = JSON.stringify([DATA_VERSION, client.name, client.outcomes, client.deal_value, client.conversion_field, client.labels, client.targets, client.notes, client.actions, client.term_groups, client.timezone, client.currency, client.last_change_date, client.goals, client.include_paused, client.default_scope, client.meta_ad_account, client.meta_goals]);
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
   return (h >>> 0).toString(36);

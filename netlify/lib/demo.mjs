@@ -1,6 +1,7 @@
 // Synthetic report data in exactly the same shape the live Google Ads builder returns.
 // Used for ?k=demo and ?k=demo-calls so the page can be previewed before any credentials exist.
 import { addDays, daysBetween, DATA_VERSION } from './ads.mjs';
+import { demoMeta } from './meta.mjs';
 
 function rnd(seed) {
   let h = 2166136261;
@@ -167,6 +168,7 @@ export function demoReport(token, from, to) {
   for (const c of camps) Object.assign(c, info[c.id] || {});
   const full = mode === 'full';
   return {
+    platforms: { meta: full ? demoMeta(from, to) : null },
     meta: {
       client_name: full ? 'Sample Client' : 'Sample Coaching Co', data_version: DATA_VERSION,
       refreshed_at: new Date().toISOString(),

@@ -3,8 +3,9 @@
 // No connector, no per-account limit: any client account under the MCC can be reported on.
 
 import { applyGoals } from './goals.mjs';
+import { buildMeta } from './meta.mjs';
 // Bump when the Google queries change, so saved reports built by older code are rebuilt.
-export const DATA_VERSION = '2.12';
+export const DATA_VERSION = '2.13';
 
 const DAY = 864e5;
 export const addDays = (iso, n) => new Date(Date.parse(iso + 'T00:00:00Z') + n * DAY).toISOString().slice(0, 10);
@@ -391,6 +392,9 @@ export async function buildReport({ client: rawClient, from, to, env = process.e
   const warnings = [];
   const sw = statusWhere(client);
   const andSw = sw ? ' AND ' + sw : '';
+  // Meta runs alongside Google. If it fails, Google still loads and the problem shows as a warning.
+  const metaWarn = [];
+  const metaP = settle('Meta', buildMeta({ client, from, to, env, fetchFn }), metaWarn);
 
   // Core: daily campaign rows for the previous and current period.
   const coreP = runQuery(customerId,
@@ -566,7 +570,9 @@ export async function buildReport({ client: rawClient, from, to, env = process.e
       }
     : { leads: true, calls: false, deals: false, revenue: false };
 
+  const metaData = await metaP;
   return {
+    platforms: { meta: metaData || (client.meta_ad_account ? { error: metaWarn[0] || 'Meta is not connected yet.' } : null) },
     meta: {
       client_name: client.name,
       data_version: DATA_VERSION,

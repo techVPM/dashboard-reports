@@ -36,7 +36,7 @@ export const TEMPLATE = [
   ['video_shoot', 'launch', 'Video shoot', 'Filming the ads.', true],
   ['videos_done', 'launch', 'Videos delivered', 'Finished ads, ready to run.', true],
   ['google_live', 'launch', 'Google and YouTube ads live', 'The ads start reaching your customers.', true, 'launch'],
-  ['meta_live', 'launch', 'Meta ads live', 'The same message on Facebook and Instagram.', true],
+  ['meta_live', 'launch', 'Meta ads live', 'The same message on Facebook and Instagram.', true, 'meta'],
   ['dashboard', 'launch', 'Live reporting dashboard ready', 'Your numbers, any time, in one place.', true],
   ['first_result', 'd30', 'First result from the ads', 'The first call, lead or sale that came from the ads.', true, 'first_result'],
   ['first_report', 'd30', 'First weekly report', 'Clear numbers every week from here on.', true],
@@ -101,9 +101,23 @@ export async function history(client, st, { env = process.env, fetchFn = fetch, 
     days: [...days.values()].sort((a, b) => (a.date < b.date ? -1 : 1)),
     campaigns: (r.campaigns || []).map((c) => ({ id: c.id, name: c.name, type: c.type })),
     by_campaign: byCampaign(r.daily || [], rk),
+    meta_days: metaDays(r),
   };
   await cachePut(hk, out).catch(() => {});
   return out;
+}
+// Meta's own daily spend and results, kept apart from Google's
+function metaDays(r) {
+  const m = r.platforms && r.platforms.meta; if (!m || !m.daily) return null;
+  const by = new Map();
+  for (const d of m.daily) { const o = by.get(d.date) || { date: d.date, spend: 0, results: 0 }; o.spend += Number(d.spend) || 0; o.results += Number(d.results) || 0; by.set(d.date, o); }
+  return { label: m.label || 'Results', days: [...by.values()].sort((a, b) => (a.date < b.date ? -1 : 1)) };
+}
+function metaWindow(md, from, to) {
+  const o = { spend: 0, results: 0 };
+  for (const d of md.days) if (d.date >= from && d.date <= to) { o.spend += d.spend; o.results += d.results; }
+  o.spend = Math.round(o.spend * 100) / 100; o.cost_per_result = o.results > 0 ? Math.round(o.spend / o.results * 100) / 100 : null;
+  return o;
 }
 function byCampaign(daily, rk) {
   const m = new Map();
@@ -209,6 +223,8 @@ export function autoDates(h, st, wins) {
   const g = wins.find((w) => w.id === 'under_goal'); if (g) out.goal = g.date;
   const mg = wins.find((w) => w.id === 'monthly_goal'); if (mg) out.monthly = mg.date;
   const rg = wins.find((w) => w.id === 'roas_goal'); if (rg) out.roas = rg.date;
+  // Meta live: the first day with Meta spend, unless Meta was already running before we started
+  if (h && h.meta_days) { const start = st.kickoff || st.launch || ''; const first = h.meta_days.days.find((d) => d.spend > 0); if (first && (!start || first.date >= start)) out.meta = first.date; }
   for (const [d] of CHECKPOINTS) { const r = st.reports?.[d]; if (r && r.generated_at && !r.error) out['report' + d] = new Date(r.generated_at).toISOString().slice(0, 10); }
   return out;
 }
@@ -333,6 +349,9 @@ export async function makeReport({ client, st, days, env = process.env, fetchFn 
     before: prev, now, since_launch: since, series,
     value: vNow ? { now: vNow, before: vPrev } : null,
   };
+  // Meta, counted by Meta and kept separate from Google's results
+  const md = metaDays(both);
+  if (md && md.days.some((d) => d.spend > 0)) numbers.meta = { label: md.label, before: metaWindow(md, W.prev[0], W.prev[1]), now: metaWindow(md, W.now[0], W.now[1]) };
   const facts = { numbers, wins: wins.map((w) => ({ date: w.date, title: w.title, detail: w.detail })), milestones_this_period: done, notes: st.notes.filter((n) => n.public).map((n) => n.text).slice(-10), detail };
   let text = null, by = 'rules', ai_error = null;
   if (env.ANTHROPIC_API_KEY) {
@@ -343,11 +362,13 @@ export async function makeReport({ client, st, days, env = process.env, fetchFn 
 }
 
 // Video Power Marketing's voice (from the VPM brand voice guide), kept short for a busy owner.
-const SYSTEM = `You write the check-in report Video Power Marketing (VPM) gives a client at 30 days, 90 days, 6 months and 1 year of running their Google and YouTube ads.
+const SYSTEM = `You write the check-in report Video Power Marketing (VPM) gives a client at 30 days, 90 days, 6 months and 1 year of running their Google and YouTube ads (and Meta ads, when numbers.meta is present).
 
 Voice: VPM is the guide, the client is the hero. Write like a trusted partner talking over coffee: warm, direct, honest, humble. Use "we" and "you" and "together". Lead with what changed for their business, then the numbers that prove it. Plain words a business owner understands; explain any ad term in a few words or avoid it.
 Never use these words: game-changer, revolutionary, disruptive, synergy, leverage, bandwidth, circle back, amazing, incredible, unbelievable, epic, "we believe", "we feel", comprehensive, holistic, end-to-end, basically, actually, very, just, simply, world-class, best-in-class, cutting-edge. No hype, no exclamation marks, no em dashes or en dashes (use commas or periods).
 Be honest: celebrate real wins with numbers, name gaps plainly and say what we will do about them. Never invent or estimate numbers; use only the facts given.
+
+If numbers.meta is present, those are Meta (Facebook and Instagram) results as Meta counts them. Talk about them separately and never add them to the Google numbers, because each platform counts results its own way.
 
 The comparison: "now" is the latest ${'${period}'}-day period, "before" is the ${'${period}'} days just before it. Say that plainly (for example "the last 30 days compared with the 30 days before"). If "value" is present it is ${'${valueKind}'}.
 

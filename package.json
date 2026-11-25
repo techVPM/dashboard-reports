@@ -1,11 +1,11 @@
 {
   "name": "vpm-live-reports",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test test/ads.test.mjs",
+    "test": "node --test test/ads.test.mjs test/meta.test.mjs",
     "add-client": "node scripts/add-client.mjs"
   },
   "dependencies": {

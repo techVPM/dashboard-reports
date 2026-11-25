@@ -22,8 +22,8 @@ function render() {
     var opts = [['all', HASMIX ? 'All types' : 'All campaigns']].concat(types.map(function (x) { return [x, TYPE_LBL[x] || 'Other']; }));
     seg.innerHTML = opts.map(function (o) { return '<button data-type="' + o[0] + '" class="' + (S.type === o[0] ? 'on' : '') + '" aria-pressed="' + (S.type === o[0]) + '">' + o[1] + '</button>'; }).join('');
   } else { seg.hidden = true; S.type = 'all'; }
-  var f = { overview: vOverview, weekly: vWeekly, campaigns: vCampaigns, creative: vCreative, insights: vInsights, campaign: vDetail, journey: vJourney }[S.view];
-  var jv = S.view === 'journey'; document.getElementById('toolbar').hidden = jv; document.querySelector('.datebox').hidden = jv;
+  var f = { overview: vOverview, weekly: vWeekly, campaigns: vCampaigns, creative: vCreative, insights: vInsights, campaign: vDetail, journey: vJourney, platforms: vPlatforms }[S.view];
+  var jv = S.view === 'journey'; document.getElementById('toolbar').hidden = jv || (S.view === 'platforms' && S.plat === 'meta'); document.querySelector('.datebox').hidden = jv;
   charts = []; view.innerHTML = f(); paintCharts();
   if (S.view === 'weekly') { var A = agg(list()), Wk = weeks(A); weekChart(document.getElementById('ch-wk1'), Wk, 'bars'); weekChart(document.getElementById('ch-wk2'), Wk, 'line'); }
   try { history.replaceState(null, '', location.search + '#' + (S.view === 'campaign' ? 'c-' + S.cid : S.view)); } catch (e) { /* ignore */ }
@@ -113,6 +113,7 @@ function drawScope() {
 }
 function apply(P) {
   RAW = P;
+  setPlatforms(P);
   build(scoped(P)); buildMET(); loaded = true; drawScope();
   var h = ''; try { h = location.hash.slice(1); } catch (e) { /* ignore */ }
   if (h === 'videos' || h === 'ads') h = 'creative';
@@ -143,7 +144,8 @@ function load() {
 
 /* ---------- events ---------- */
 root.addEventListener('click', function (e) {
-  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-ai],[data-lp],[data-page],[data-close],[data-burger],[data-scope],[data-ps],[data-jrep],[data-jall]'); if (!t || !root.contains(t)) return;
+  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-ai],[data-lp],[data-page],[data-close],[data-burger],[data-scope],[data-ps],[data-jrep],[data-jall],[data-plat]'); if (!t || !root.contains(t)) return;
+  if (t.dataset.plat) { S.plat = t.dataset.plat; return render(); }
   if (t.dataset.jrep) return openJReport(t.dataset.jrep);
   if (t.dataset.jall) { S.jall = !S.jall; var yy = window.scrollY; render(); window.scrollTo(0, yy); return; }
   if (t.tagName === 'A') e.preventDefault();

@@ -46,3 +46,6 @@
 .jr-t small{display:block;text-transform:none;letter-spacing:0;font-weight:400}
 @media (max-width:760px){.jr-cards,.jr-charts,.jr-3p{grid-template-columns:minmax(0,1fr)}.jr .jr-h{font-size:22px}}
 @media print{.jr-card,.jr-chart,.jr-p{break-inside:avoid}.jr-p,.jr-card.jr-val{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+
+.jr-plat{margin:-6px 0 8px;font-size:13px;font-weight:700;color:#748A93;text-transform:uppercase;letter-spacing:.05em}
+.jr-meta .jr-card{border-top:3px solid #00BAFF}

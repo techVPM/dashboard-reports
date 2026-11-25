@@ -291,7 +291,22 @@ Settings in Netlify:
 - `ANTHROPIC_API_KEY`: lets Claude write the check-in reports. Without it, reports use set phrases. (Optional: `ANTHROPIC_MODEL`, default claude-sonnet-5-5.)
 - `REFRESH_SECRET`: already set; the report is written by a background function that checks it.
 
+## Meta ads (Facebook and Instagram)
+
+Meta results always show on their own, next to Google, and are never added to Google's results (each platform counts results its own way). Clients with a Meta ad account get a **Google and Meta** tab in their report with a Side by side / Google only / Meta only switch, plus a one-line Meta summary on Overview. Check-in reports include Meta as its own row, and the "Meta ads live" milestone ticks itself on the first day of Meta spend.
+
+Setup (once):
+1. In Meta Business settings, make a system user (Employee role) and give it **View performance** on each client ad account.
+2. Generate a token for it with the **ads_read** permission only, expiring **Never**.
+3. In Netlify, Site configuration > Environment variables, add `META_ACCESS_TOKEN` (the token) and `META_APP_SECRET` (the app's secret from App settings > Basic). Optional: `META_API_VERSION` (default v23.0). Redeploy.
+
+Per client, in Clients and goals, open the **Meta ads** card: add the ad account ID (act_...), pick which results count (Main result, Watch or Ignore), and set a name and a cost per result goal if you like. Until results are picked, the report uses Leads (or Purchases when there are no leads).
+
+If the token stops working, the team sees the reason on the Google and Meta tab (with ?team=1); clients see nothing broken, the tab simply hides.
+
 ## Version notes
+
+- **3.4.0**: Meta ads. New Google and Meta tab in the client report (each platform's results side by side, never combined; Meta campaigns and ads with thumbnails), a "Both platforms at a glance" box at the top of Overview (each platform's results kept apart; the rest of Overview is Google), Meta in check-in reports, and the Meta ads live milestone fills itself in. Clients and goals settings are now cards: one open at a time, and each closed card shows what is filled in. New Meta ads card with a results picker and its own goal.
 
 - **3.3.0**: The client journey moved into Clients and goals: each client has a Client dashboard tab and a Client journey tab, plus a Client journey switch next to Active client (the old /journey page redirects there). Any milestone can be edited or removed per client (and put back); automatic wins can be reworded. Ticking a milestone is instant with a progress bar, and the stage the client is in is highlighted. Check-in reports are now Progress, Problems and Plans with charts (results and cost per result by week or month against the period before), shown the same way in the client's report, the team view and the PDF. Kickoff date can be filled from the GoHighLevel start date. New Test client (Testing section in Clients and goals) mirrors any client's account and goals with its own link and journey. Client journey page order: highlights, coming up, check-in reports, roadmap, notes, then a compact story so far.
 

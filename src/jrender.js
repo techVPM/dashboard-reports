@@ -63,6 +63,12 @@
       '<div class="jr-card"><span class="jr-l">Cost per ' + esc(sing(U)) + '</span><b>' + m2(c.cost_per_result) + '</b>' + chg(b.cost_per_result, c.cost_per_result, 1, P) + '</div>' +
       (n.value ? '<div class="jr-card jr-val"><span class="jr-l">' + (n.value.now.estimate ? 'Estimated sales' : 'Sales from the ads') + '</span><b>' + m0(n.value.now.amount) + '</b><span class="jr-ch">' + n.value.now.roi.toFixed(1) + 'x return on ad spend</span></div>'
         : '<div class="jr-card"><span class="jr-l">Invested in ads</span><b>' + m0(c.spend) + '</b>' + chg(b.spend, c.spend, 0, P) + '</div>') + '</div>';
+    if (n.meta && n.meta.now) {
+      var mn = n.meta.now, mb = n.meta.before || {}, ML = n.meta.label || 'Results';
+      h += '<p class="jr-plat">Meta (Facebook and Instagram), counted by Meta and shown on its own</p><div class="jr-cards jr-meta"><div class="jr-card"><span class="jr-l">Meta ' + esc(ML.toLowerCase()) + '</span><b>' + n0(mn.results) + '</b>' + chg(mb.results, mn.results, 0, P) + '</div>' +
+        '<div class="jr-card"><span class="jr-l">Cost per ' + esc(sing(ML)) + ' on Meta</span><b>' + m2(mn.cost_per_result) + '</b>' + chg(mb.cost_per_result, mn.cost_per_result, 1, P) + '</div>' +
+        '<div class="jr-card"><span class="jr-l">Invested in Meta ads</span><b>' + m0(mn.spend) + '</b>' + chg(mb.spend, mn.spend, 0, P) + '</div></div>';
+    }
     if (S && S.now && S.now.length > 1) {
       h += '<div class="jr-charts"><div class="jr-chart"><div class="jr-ct"><b>' + esc(U) + ' by ' + per + '</b><span class="jr-key"><i class="k1"></i>These ' + P + ' days <i class="k0"></i>The ' + P + ' days before</span></div>' + barChart(S.now, S.before || [], 'results', n0, U) + '</div>' +
         '<div class="jr-chart"><div class="jr-ct"><b>Cost per ' + esc(sing(U)) + ' by ' + per + '</b><span class="jr-key"><i class="k1"></i>These ' + P + ' days <i class="k0 dash"></i>Before</span></div>' + lineChart(S.now, S.before || [], n.goal && n.goal.cost_per_result) + '</div></div>';

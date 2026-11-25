@@ -8,6 +8,7 @@ import { cleanGoals } from '../lib/goals.mjs';
 import { loadJourney } from '../lib/journey.mjs';
 import { isAdmin, jsonRes } from '../lib/auth.mjs';
 import { runQuery, digits } from '../lib/ads.mjs';
+import { listMetaConversions, metaConnected } from '../lib/meta.mjs';
 import { savedBusiness, refreshBusiness } from '../lib/business.mjs';
 import { DEFAULT_LOCATION } from '../lib/ghl.mjs';
 
@@ -72,6 +73,18 @@ export function validate(c, list, original) {
     if (m.length < 5 || m.length > 20) errs.push('The Meta ad account ID should be the number from Ads Manager, like act_1234567890.');
     else c.meta_ad_account = 'act_' + m;
   }
+  // Meta goals: which Meta results count, what to call them, and the cost per result goal. Kept apart from Google's goals.
+  if (c.meta_goals && typeof c.meta_goals === 'object') {
+    const mg = c.meta_goals, out = {};
+    const focus = (Array.isArray(mg.focus) ? mg.focus : []).map((x) => String(x).trim()).filter((x) => /^[a-z0-9_.]{2,80}$/i.test(x));
+    if (focus.length) out.focus = [...new Set(focus)].slice(0, 20);
+    const watch = (Array.isArray(mg.watch) ? mg.watch : []).map((x) => String(x).trim()).filter((x) => /^[a-z0-9_.]{2,80}$/i.test(x) && !focus.includes(x));
+    if (watch.length) out.watch = [...new Set(watch)].slice(0, 20);
+    if (String(mg.label || '').trim()) out.label = String(mg.label).trim().slice(0, 40);
+    const cpr = Number(String(mg.cost_per_result ?? '').replace(/[$,\s]/g, ''));
+    if (mg.cost_per_result != null && String(mg.cost_per_result).trim() !== '') { if (cpr > 0) out.cost_per_result = Math.round(cpr * 100) / 100; else errs.push('The Meta cost per result goal should be a number like 40.'); }
+    if (Object.keys(out).length) c.meta_goals = out; else delete c.meta_goals;
+  } else delete c.meta_goals;
   if (c.drive_url && !/^https:\/\/[^\s]+$/.test(c.drive_url)) errs.push('The Drive folder link should start with https://');
   if (c.internal_notes && c.internal_notes.length > 5000) errs.push('Internal notes are too long (5,000 characters at most).');
   if (c.ghl_contact_id && list.some((x) => x.ghl_contact_id === c.ghl_contact_id && x.token !== original)) errs.push('That GoHighLevel contact is already linked to ' + list.find((x) => x.ghl_contact_id === c.ghl_contact_id).name + '.');
@@ -100,6 +113,13 @@ export default async (req) => {
     if (process.env.VPM_DEV) return jsonRes({ conversions: [{ name: 'Booked Call', category: 'book appointment', primary: true, count30: 46 }, { name: 'Submit lead form', category: 'submit lead form', primary: false, count30: 56 }, { name: 'Local actions - Directions', category: 'get directions', primary: true, count30: 2 }, { name: 'YouTube follow-on views', category: 'default', primary: false, count30: 1 }] });
     try { return jsonRes({ conversions: await listConversions(id) }); }
     catch (e) { return jsonRes({ error: 'Could not read conversions from Google Ads: ' + e.message }, 502); }
+  }
+  if (req.method === 'GET' && url.searchParams.get('meta_conversions')) {
+    const id = url.searchParams.get('meta_conversions');
+    if (process.env.VPM_DEV && !metaConnected()) return jsonRes({ connected: true, conversions: [{ type: 'lead', name: 'Leads (all)', count30: 64 }, { type: 'onsite_conversion.lead_grouped', name: 'Leads on Facebook forms', count30: 41 }, { type: 'offsite_conversion.fb_pixel_lead', name: 'Leads on the website', count30: 23 }, { type: 'offsite_conversion.fb_pixel_schedule', name: 'Appointments on the website', count30: 9 }, { type: 'onsite_conversion.messaging_conversation_started_7d', name: 'Messages started', count30: 15 }, { type: 'offsite_conversion.custom.123', name: 'Thank you page (custom)', count30: 0 }] });
+    if (!metaConnected()) return jsonRes({ connected: false, conversions: [], error: 'Meta is not connected yet. Add META_ACCESS_TOKEN in Netlify (see the README).' });
+    try { return jsonRes({ connected: true, conversions: await listMetaConversions(id) }); }
+    catch (e) { return jsonRes({ connected: true, error: e.message, conversions: [] }, e.status === 400 ? 400 : 502); }
   }
   if (req.method === 'GET' && url.searchParams.get('ghl')) {
     try { return jsonRes(await ghlContacts()); }

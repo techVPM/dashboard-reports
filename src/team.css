@@ -619,3 +619,25 @@
 .vpm.tm .clientlist .tstb{border:1px dashed var(--line)}
 .vpm.tm .jtab .tlink,.jmw .tlink{color:var(--c1);font-weight:700;background:none;border:0;padding:0;cursor:pointer;font-size:14px}
 .vpm.tm .jtab .tlink:hover{text-decoration:underline}
+
+/* 3.4 setting cards in Clients and goals: one open at a time */
+.vpm.tm .cardhint{margin:14px 0 8px;color:var(--muted);font-size:13.5px}
+.vpm.tm .acards{display:grid;gap:10px}
+.vpm.tm .acard{border:1px solid var(--line);border-radius:12px;background:var(--panel);transition:box-shadow .15s,border-color .15s}
+.vpm.tm .acard[open]{border-color:var(--muted);box-shadow:0 4px 18px rgba(0,0,0,.08)}
+.vpm.tm .acard>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 16px;position:relative}
+.vpm.tm .acard>summary::-webkit-details-marker{display:none}
+.vpm.tm .acard>summary:hover{background:var(--soft);border-radius:12px}
+.vpm.tm .acard .at{display:flex;flex-direction:column;gap:2px;min-width:0;padding-left:16px;position:relative}
+.vpm.tm .acard .at::before{content:'';position:absolute;left:0;top:6px;width:8px;height:8px;border-radius:50%;background:var(--line)}
+.vpm.tm .acard.isset .at::before{background:var(--good)}
+.vpm.tm .acard .at b{font-family:var(--font-head);font-weight:500;font-size:16.5px}
+.vpm.tm .acard .asum{color:var(--muted);font-size:13.5px;overflow-wrap:anywhere}
+.vpm.tm .acard[open] .asum{display:none}
+.vpm.tm .acard .aopen{flex:none;font-size:13.5px;font-weight:700;color:var(--accent);border:1px solid var(--line);border-radius:8px;padding:5px 12px;background:var(--panel)}
+.vpm.tm .acard .aopen .c,.vpm.tm .acard[open] .aopen .o{display:none}
+.vpm.tm .acard[open] .aopen .c{display:inline}
+.vpm.tm .acard .abody{padding:4px 16px 16px;border-top:1px solid var(--line)}
+.vpm.tm .acard[open] .abody{animation:acin .18s ease-out}
+.vpm.tm .acard .cardsub{margin:10px 0 4px}
+@keyframes acin{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}

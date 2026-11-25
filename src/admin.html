@@ -39,7 +39,7 @@
   var TZ = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific'], ['America/Anchorage', 'Alaska'], ['Pacific/Honolulu', 'Hawaii']];
   var TYPES = [['video', 'Video (YouTube and Demand Gen)'], ['search', 'Search'], ['pmax', 'Performance Max'], ['search+pmax', 'Search and Performance Max'], ['shopping', 'Shopping'], ['display', 'Display']];
   var TYPE_SHORT = { video: 'Video', search: 'Search', pmax: 'PMax', 'search+pmax': 'Search and PMax', shopping: 'Shopping', display: 'Display' };
-  var FORM_KEYS = ['name', 'customer_id', 'token', 'timezone', 'default_scope', 'disabled', 'include_paused', 'goals', 'notes', 'last_change_date', 'ads_url', 'ghl_contact_id', 'meta_ad_account', 'drive_url', 'internal_notes'];
+  var FORM_KEYS = ['name', 'customer_id', 'token', 'timezone', 'default_scope', 'disabled', 'include_paused', 'goals', 'notes', 'last_change_date', 'ads_url', 'ghl_contact_id', 'meta_ad_account', 'meta_goals', 'drive_url', 'internal_notes'];
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function slug(n, id) { return String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '-' + String(id || '').replace(/\D/g, '').slice(-4); }
   function money(v) { return '$' + Math.round(Number(v)).toLocaleString('en-US'); }
@@ -102,6 +102,41 @@
     return '<details class="fsec fold2"' + (open ? ' open' : '') + '><summary><h3>' + title + '</h3>' + (sub ? '<p>' + sub + '</p>' : '') + '</summary>' + body + '</details>';
   }
 
+  /* ---------- setting cards: one open at a time, each shows what is filled in when closed ---------- */
+  var OPENCARD = null;
+  function card(id, title, body) {
+    return '<details class="acard" data-card="' + id + '"' + (OPENCARD === id ? ' open' : '') + '><summary><span class="at"><b>' + title + '</b><small class="asum" id="sum_' + id + '"></small></span><span class="aopen"><span class="o">Edit</span><span class="c">Close</span></span></summary><div class="abody">' + body + '</div></details>';
+  }
+  function openCard(el) {
+    var d = el && el.closest ? el.closest('details.acard') : null;
+    if (d && !d.open) d.open = true;
+    return el;
+  }
+  function moneyS(v) { var n = Number(String(v || '').replace(/[$,]/g, '')); return n ? '$' + n.toLocaleString('en-US') : String(v || ''); }
+  function sums() {
+    var put = function (id, parts, empty) { var el = $('sum_' + id); if (!el) return; parts = parts.filter(Boolean); el.textContent = parts.length ? parts.join(' · ') : empty; el.closest('details').classList.toggle('isset', !!parts.length); };
+    var tzo = $('f_tz'), tzl = tzo && tzo.selectedIndex > -1 ? tzo.options[tzo.selectedIndex].text : '';
+    put('basics', [val('f_name'), val('f_cid') ? 'Google Ads ' + val('f_cid') : 'No Google Ads ID yet', tzl, val('f_scope') === 'vpm' ? 'VPM campaigns only' : 'All campaigns'], 'Name and Google Ads ID');
+    var gm = lines('g_focus');
+    put('google', [val('g_lbl'), val('g_cpa') ? 'goal ' + moneyS(val('g_cpa')) + ' each' : '', val('g_vol') ? val('g_vol') + ' a ' + val('g_volp') : '', gm.length ? gm.length + ' main conversion' + (gm.length > 1 ? 's' : '') : (val('f_cid') ? 'No main conversion picked' : '')], 'No goal set yet');
+    var mm = lines('m_focus');
+    put('meta', val('f_meta') ? [val('f_meta'), val('m_lbl'), val('m_cpa') ? 'goal ' + moneyS(val('m_cpa')) + ' each' : '', mm.length ? mm.length + ' result type' + (mm.length > 1 ? 's' : '') + ' picked' : 'Results not picked yet'] : [], 'Not set up. Add the Meta ad account ID to show Meta results.');
+    var sp = Array.prototype.map.call(document.querySelectorAll('#splits .srow'), function (r) { var t = r.querySelector('.s_type'), v = r.querySelector('.s_amt').value; return v ? t.options[t.selectedIndex].text + ' ' + moneyS(v) : ''; });
+    put('budget', [val('g_ms') ? moneyS(val('g_ms')) + ' a month in total' : ''].concat(sp), 'No budget set');
+    put('more', [val('g_roas') ? 'Return goal ' + val('g_roas') + 'x' : '', val('g_note') ? 'Goal note set' : ''], 'Optional. Nothing set.');
+    put('extras', [val('x_note') ? 'Note to the client set' : '', val('x_lcd') ? 'Last big change ' + dshort(val('x_lcd')) : ''], 'Optional. Nothing set.');
+    var gx = ghlById(val('f_ghl'));
+    put('links', [val('f_ghl') ? 'GoHighLevel: ' + (gx ? gx.name : 'linked') : '', val('f_drive') ? 'Drive folder' : '', val('x_inotes') ? 'Internal notes' : ''], 'GoHighLevel not linked');
+    put('account', [val('f_tok') ? 'Link key ' + val('f_tok') : '', $('f_paused') && $('f_paused').checked ? 'Shows paused campaigns' : '', val('x_ads') ? 'Custom Google Ads link' : ''], 'Defaults');
+    var adv = 0; try { adv = Object.keys(JSON.parse(val('x_adv') || '{}')).length; } catch (e) { adv = -1; }
+    put('advanced', [adv < 0 ? 'Not valid JSON' : adv ? adv + ' other setting' + (adv > 1 ? 's' : '') : ''], 'Nothing extra');
+  }
+  $('form').addEventListener('toggle', function (e) {
+    var d = e.target; if (!d.classList || !d.classList.contains('acard')) return;
+    if (d.open) { OPENCARD = d.dataset.card; document.querySelectorAll('details.acard[open]').forEach(function (x) { if (x !== d) x.open = false; }); var top = d.getBoundingClientRect().top; if (top < 70) window.scrollBy({ top: top - 80, behavior: 'smooth' }); }
+    else if (OPENCARD === d.dataset.card) OPENCARD = null;
+  }, true);
+
   function edit(c, keepTab) {
     if (JED) { JED.destroy(); JED = null; }
     CUR = c ? JSON.parse(JSON.stringify(c)) : { name: '', customer_id: '', timezone: 'America/Denver', goals: {} };
@@ -113,7 +148,8 @@
     var adv = {}; Object.keys(CUR).forEach(function (k) { if (FORM_KEYS.indexOf(k) < 0) adv[k] = CUR[k]; });
     var link = ORIG ? SITE + '/' + ORIG : '', sm = summary(CUR);
     var volN = g.weekly_conversions || g.monthly_conversions || '', volP = g.weekly_conversions ? 'week' : 'month';
-    var moreOpen = !!(g.roas || g.note);
+    var mg = CUR.meta_goals || {};
+    if (!keepTab) OPENCARD = ORIG ? null : 'basics';
 
     $('form').innerHTML =
       '<div class="fhead"><div><h2>' + (ORIG ? esc(CUR.name) : 'New client') + '</h2>' + (sm.length ? '<p class="glance">' + sm.map(esc).join(' · ') + '</p>' : '') + '</div>' +
@@ -123,21 +159,15 @@
       (link ? '<p class="linkline">Client link: <b>' + esc(link) + '</b> <button type="button" class="tlink" data-copy="' + esc(link) + '">Copy link</button> <button type="button" class="tlink" data-copy="' + esc(embedCode(link, CUR.name)) + '" title="Paste into a Custom HTML or Code element on the client\'s GoHighLevel portal page">Copy embed code</button>' + (ORIG ? ' <a class="tlink" href="/profile?c=' + encodeURIComponent(ORIG) + '">Client profile</a>' : '') + (CUR.disabled ? ' <span class="pill early">Turned off while inactive</span>' : '') + '</p>' : '') +
 
       (ORIG ? '' : '<div class="tpls"><b>Start from a template</b><div class="tplbtns">' + TEMPLATES.map(function (t, i) { return '<button type="button" class="tpl" data-tpl="' + i + '"><b>' + t.name + '</b><small>' + t.sub + '</small></button>'; }).join('') + '</div></div>') +
-      section('Client', '', '<div class="fgrid g3">' +
+      '<p class="cardhint">Click a card to open it. One card opens at a time, and each one shows what is filled in when it is closed.</p><div class="acards">' +
+      card('basics', 'Client basics', '<div class="fgrid g3">' +
         f('Client name', 'f_name', CUR.name) +
         f('Google Ads ID', 'f_cid', CUR.customer_id, '', 'text', '123-456-7890') +
         '<label class="fld"><span>Ads account time zone</span><select id="f_tz">' + TZ.map(function (z) { return '<option value="' + z[0] + '"' + ((CUR.timezone || 'America/Denver') === z[0] ? ' selected' : '') + '>' + z[1] + '</option>'; }).join('') + '</select></label>' +
         '<label class="fld wide"><span>Campaigns we manage</span><select id="f_scope"><option value="all"' + (CUR.default_scope === 'vpm' ? '' : ' selected') + '>All campaigns in the account</option><option value="vpm"' + (CUR.default_scope === 'vpm' ? ' selected' : '') + '>Only campaigns with VPM in the name</option></select><small>Sets what the client report, goals and team dashboard show first. Anyone can still switch between VPM, not VPM and all campaigns.</small></label>' +
       '</div>') +
 
-      section('GoHighLevel and links', 'Link the client to their GoHighLevel contact, and keep their other accounts in one place.', '<div class="fgrid g3">' +
-        '<div class="fld wide"><span>GoHighLevel contact</span><div class="ghlrow"><select id="f_ghl" aria-label="GoHighLevel contact"><option value="' + esc(CUR.ghl_contact_id || '') + '">Loading GoHighLevel contacts</option></select><button type="button" class="obtn" data-ghlfill="1" id="ghlfill" hidden>Fill name and Google Ads ID</button></div><small id="ghlinfo">Links billing, start date and fee to this client for the Business page, health score and client profile.</small></div>' +
-        f('Meta ad account ID', 'f_meta', CUR.meta_ad_account, 'From Meta Ads Manager, like act_1234567890. Meta conversions can be picked once Meta is connected.', 'text', 'act_1234567890') +
-        f('Google Drive folder', 'f_drive', CUR.drive_url, 'Link to the client\'s shared folder', 'url', 'https://drive.google.com/...') +
-        ta('Internal notes', 'x_inotes', CUR.internal_notes, 'Only the team sees these, on the client profile page. Never shown to the client.', 3, 'For example: prefers calls on Tuesdays, renewal talk in March') +
-      '</div>') +
-
-      section('Goal', 'What a good result looks like for this client.', '<div class="fgrid g3">' +
+      card('google', 'Google Ads goal and results', '<p class="sub cardsub">What a good result looks like on Google.</p><div class="fgrid g3">' +
         f('Target cost per result', 'g_cpa', g.cost_per_conversion, 'A number like 250, or a range like 200-300') +
         f('What to call a result', 'g_lbl', g.result_label, 'For example Leads, Booked calls, Store visits') +
         '<label class="fld"><span>Results goal</span><span class="pair"><input id="g_vol" inputmode="numeric" value="' + esc(volN) + '" aria-label="Number of results"><select id="g_volp" aria-label="Per"><option value="week"' + (volP === 'week' ? ' selected' : '') + '>a week</option><option value="month"' + (volP === 'month' ? ' selected' : '') + '>a month</option></select></span><small>Optional</small></label>' +
@@ -148,32 +178,49 @@
           '</div></details></div>' +
       '</div>') +
 
-      section('Budget', 'Monthly spend. Add a split if budgets are set per campaign type.', '<div class="fgrid g3">' +
+      card('meta', 'Meta ads (Facebook and Instagram)', '<p class="sub cardsub">Meta results always show on their own, next to Google, never added together. Each platform counts results its own way.</p><div class="fgrid g3">' +
+        f('Meta ad account ID', 'f_meta', CUR.meta_ad_account, 'From Meta Ads Manager, like act_1234567890', 'text', 'act_1234567890') +
+        f('What to call a Meta result', 'm_lbl', mg.label, 'For example Leads. Leave blank to use the result\'s name.') +
+        f('Target cost per Meta result', 'm_cpa', mg.cost_per_result, 'A number like 40. Optional.') +
+        '<div class="fld wide"><span>Meta results</span><div class="cpick" id="mpick"><p class="sub">Add the Meta ad account ID to pick results.</p></div>' +
+          '<input type="hidden" id="m_focus" value="' + esc((mg.focus || []).join('\n')) + '"><input type="hidden" id="m_watch" value="' + esc((mg.watch || []).join('\n')) + '"></div>' +
+      '</div>') +
+
+      card('budget', 'Budget', '<p class="sub cardsub">Monthly spend. Add a split if budgets are set per campaign type.</p><div class="fgrid g3">' +
         f('Whole account, per month', 'g_ms', g.monthly_spend, 'Optional') +
       '</div><div class="splits" id="splits">' + Object.keys(sbt).map(function (k) { return splitRow(k, sbt[k]); }).join('') + '</div><button type="button" class="tlink addsplit" data-addsplit="1">+ Add a split by campaign type</button>') +
 
-      section('More goal options', 'Return on ad spend and a goal note for the client', '<div class="fgrid">' +
+      card('more', 'More goal options', '<div class="fgrid">' +
         f('Target return on ad spend', 'g_roas', g.roas, 'For example 4 means $4 back for every $1. Needs revenue tracking.') +
         ta('Goal note shown to the client', 'g_note', g.note, 'One sentence, for example: Goal is under $250 per booked demo.', 2) +
-      '</div>', moreOpen, true) +
+      '</div>') +
 
-      section('Client report extras', 'A note from your team, and the 14-day wait clock', '<div class="fgrid">' +
+      card('extras', 'Client report extras', '<div class="fgrid">' +
         ta('Note to the client', 'x_note', note, 'Shows at the top of their Insights page.', 3) +
         f('Date of the last big account change', 'x_lcd', CUR.last_change_date, 'Starts the 14-day wait clock', 'date') +
-      '</div>', !!(note || CUR.last_change_date), true) +
+      '</div>') +
 
-      section('Account settings', 'Link key, paused campaigns, Google Ads link', '<div class="fgrid">' +
+      card('links', 'GoHighLevel and links', '<div class="fgrid g3">' +
+        '<div class="fld wide"><span>GoHighLevel contact</span><div class="ghlrow"><select id="f_ghl" aria-label="GoHighLevel contact"><option value="' + esc(CUR.ghl_contact_id || '') + '">Loading GoHighLevel contacts</option></select><button type="button" class="obtn" data-ghlfill="1" id="ghlfill" hidden>Fill name and Google Ads ID</button></div><small id="ghlinfo">Links billing, start date and fee to this client for the Business page, health score and client profile.</small></div>' +
+        f('Google Drive folder', 'f_drive', CUR.drive_url, 'Link to the client\'s shared folder', 'url', 'https://drive.google.com/...') +
+        ta('Internal notes', 'x_inotes', CUR.internal_notes, 'Only the team sees these, on the client profile page. Never shown to the client.', 3, 'For example: prefers calls on Tuesdays, renewal talk in March') +
+      '</div>') +
+
+      card('account', 'Account settings', '<div class="fgrid">' +
         f('Link key', 'f_tok', CUR.token, 'Leave blank to use the name plus the last 4 digits of the Ads ID. Changing it breaks the old link.') +
         f('Google Ads link', 'x_ads', CUR.ads_url, 'Only if the team dashboard button opens the wrong account') +
         '<label class="chkl"><input type="checkbox" id="f_paused"' + (CUR.include_paused ? ' checked' : '') + '> Show paused campaigns in the report</label>' +
-      '</div>', !ORIG, true) +
+      '</div>') +
 
-      section('Advanced (for developers)', 'Other settings as JSON', ta('Other settings', 'x_adv', JSON.stringify(adv, null, 2), 'outcomes, labels, targets, term_groups, actions, conversion_field and so on. Leave as is if unsure.', 8), false, true) +
+      card('advanced', 'Advanced (for developers)', ta('Other settings', 'x_adv', JSON.stringify(adv, null, 2), 'outcomes, labels, targets, term_groups, actions, conversion_field and so on. Leave as is if unsure.', 8)) +
+      '</div>' +
 
       '<div class="savebar"><span class="dirty" id="dirty" hidden>Unsaved changes</span><p class="err" id="ferr" hidden></p><p class="ok" id="fok" hidden></p><span class="sp"></span>' +
         (ORIG ? '<button type="button" class="obtn danger" data-del="1">Delete</button>' : '') + '<button type="submit" class="mbtn">' + (ORIG ? 'Save changes' : 'Add client') + '</button></div></div>';
     loadConversions();
+    loadMetaConv();
     loadGhl();
+    sums();
     showTab();
   }
   /* ---------- tabs: client dashboard settings and client journey ---------- */
@@ -235,7 +282,7 @@
     el.disabled = false;
     el.innerHTML = '<option value="">Not linked</option>' + (act.length ? '<optgroup label="Active clients">' + act.map(opt).join('') + '</optgroup>' : '') + (old.length ? '<optgroup label="Former clients">' + old.map(opt).join('') + '</optgroup>' : '') +
       (cur && !ghlById(cur) ? '<option value="' + esc(cur) + '" selected>Linked contact not found (' + esc(cur) + ')</option>' : '');
-    ghlInfo();
+    ghlInfo(); sums();
   }
   function ghlInfo() {
     var id = val('f_ghl'), x = ghlById(id), info = $('ghlinfo'), fill = $('ghlfill');
@@ -296,7 +343,41 @@
     var main = lines('g_focus').filter(function (n) { return norm(n) !== k; }), watch = lines('g_sec').filter(function (n) { return norm(n) !== k; });
     if (to === 'main') main.push(name); else if (to === 'watch') watch.push(name);
     $('g_focus').value = main.join('\n'); $('g_sec').value = watch.join('\n');
-    setDirty(true); drawPicker();
+    setDirty(true); drawPicker(); sums();
+  }
+  /* ---------- Meta results picker ---------- */
+  var MCONV = { acct: '', list: null, err: '', open: null };
+  function drawMeta() {
+    var el = $('mpick'); if (!el) return;
+    if (!MCONV.acct) { el.innerHTML = '<p class="sub">Add the Meta ad account ID to pick which Meta results count.</p>'; return; }
+    if (MCONV.err) { el.innerHTML = '<p class="sub">' + esc(MCONV.err) + '</p>' + (lines('m_focus').length ? '<p class="sub"><b>Picked:</b> ' + lines('m_focus').map(esc).join(', ') + '</p>' : ''); return; }
+    if (!MCONV.list) { el.innerHTML = '<p class="sub">Loading the results from this Meta ad account.</p>'; return; }
+    var main = lines('m_focus'), watch = lines('m_watch'), nm = {};
+    MCONV.list.forEach(function (c) { nm[c.type] = c.name; });
+    if (MCONV.open == null) MCONV.open = !main.length;
+    var sum = main.length ? '<b>Main result:</b> ' + main.map(function (t) { return esc(nm[t] || t); }).join(', ') + (watch.length ? ' <span class="dot">·</span> <b>Watching:</b> ' + watch.map(function (t) { return esc(nm[t] || t); }).join(', ') : '') : '<b>Nothing picked yet.</b> Until you pick, the report uses Leads (or Purchases if there are no leads).';
+    var rows = MCONV.list.length ? MCONV.list.map(function (c) {
+      var st = main.indexOf(c.type) > -1 ? 'main' : watch.indexOf(c.type) > -1 ? 'watch' : '';
+      return '<div class="crw' + (st ? ' ' + st : '') + '"><div class="cn"><b>' + esc(c.name) + '</b><small>' + (c.count30 ? c.count30.toLocaleString('en-US') + ' in the last 30 days' : 'None in the last 30 days') + '</small></div>' +
+        '<div class="seg cseg"><button type="button" data-mv="main" data-mt="' + esc(c.type) + '" class="' + (st === 'main' ? 'on' : '') + '">Main result</button><button type="button" data-mv="watch" data-mt="' + esc(c.type) + '" class="' + (st === 'watch' ? 'on' : '') + '">Watch</button><button type="button" data-mv="" data-mt="' + esc(c.type) + '" class="' + (!st ? 'on' : '') + '">Ignore</button></div></div>';
+    }).join('') : '<p class="sub">No results in this account in the last 30 days yet.</p>';
+    el.innerHTML = '<details class="cdrop" id="mdrop"' + (MCONV.open ? ' open' : '') + '><summary><span class="csum">' + sum + '</span><span class="cchg"><span class="o">Change</span><span class="c">Done</span></span></summary>' +
+      '<p class="sub">Pick what counts as a result on Meta. Tip: pick "Leads (all)" or the specific lead type, not both, so nothing is counted twice.</p><div class="crows">' + rows + '</div></details>';
+    $('mdrop').addEventListener('toggle', function () { MCONV.open = $('mdrop').open; });
+  }
+  function loadMetaConv() {
+    var a = (val('f_meta') || '').replace(/^act_/i, '').replace(/\D/g, '');
+    if (a.length < 5) { MCONV = { acct: '', list: null, err: '', open: null }; return drawMeta(); }
+    if (MCONV.acct === a && (MCONV.list || MCONV.err)) { MCONV.open = null; return drawMeta(); }
+    MCONV = { acct: a, list: null, err: '', open: null }; drawMeta();
+    api('/api/admin?meta_conversions=act_' + a).then(function (j) { if (MCONV.acct !== a) return; if (j.error) MCONV.err = j.error; else MCONV.list = j.conversions || []; drawMeta(); })
+      .catch(function (e) { if (MCONV.acct !== a) return; MCONV.err = e.message || 'Could not load Meta results.'; drawMeta(); });
+  }
+  function setMeta(type, to) {
+    var main = lines('m_focus').filter(function (n) { return n !== type; }), watch = lines('m_watch').filter(function (n) { return n !== type; });
+    if (to === 'main') main.push(type); else if (to === 'watch') watch.push(type);
+    $('m_focus').value = main.join('\n'); $('m_watch').value = watch.join('\n');
+    setDirty(true); drawMeta(); sums();
   }
   var TEMPLATES = [
     { name: 'YouTube only', sub: 'We run their YouTube and Demand Gen. Shows VPM campaigns only.', apply: function () { $('f_scope').value = 'vpm'; if (!val('g_lbl')) $('g_lbl').value = 'Leads'; if (!document.querySelector('#splits .srow')) $('splits').insertAdjacentHTML('beforeend', splitRow('video', '')); return document.querySelector('#splits .s_amt'); } },
@@ -304,8 +385,8 @@
     { name: 'Lead gen', sub: 'Judged on cost per lead and leads per month.', apply: function () { $('f_scope').value = 'all'; $('g_lbl').value = 'Leads'; $('g_volp').value = 'month'; return $('g_cpa'); } }
   ];
   function setDirty(v) { DIRTY = v; var d = $('dirty'); if (d) d.hidden = !v; if (v) { var ok = $('fok'); if (ok) ok.hidden = true; } }
-  $('form').addEventListener('input', function (e) { if (e.target.id === 'f_journey') return; setDirty(true); });
-  $('form').addEventListener('change', function (e) { if (e.target.id === 'f_journey') return setJourney(e.target.checked); setDirty(true); if (e.target.id === 'f_cid') { loadConversions(); ghlInfo(); } if (e.target.id === 'f_ghl') { ghlFill(false); ghlInfo(); } if (e.target.id === 'g_focus' || e.target.id === 'g_sec') drawPicker(); });
+  $('form').addEventListener('input', function (e) { if (e.target.id === 'f_journey') return; setDirty(true); sums(); });
+  $('form').addEventListener('change', function (e) { if (e.target.id === 'f_journey') return setJourney(e.target.checked); setDirty(true); if (e.target.id === 'f_cid') { loadConversions(); ghlInfo(); } if (e.target.id === 'f_ghl') { ghlFill(false); ghlInfo(); } if (e.target.id === 'g_focus' || e.target.id === 'g_sec') drawPicker(); if (e.target.id === 'f_meta') loadMetaConv(); sums(); });
 
   function val(id) { var el = $(id); return el ? el.value.trim() : ''; }
   function numv(id) { var v = val(id).replace(/[$,]/g, ''); return v === '' ? undefined : Number(v); }
@@ -338,6 +419,8 @@
     if (val('x_ads')) c.ads_url = val('x_ads');
     if (val('f_ghl')) c.ghl_contact_id = val('f_ghl');
     if (val('f_meta')) c.meta_ad_account = val('f_meta');
+    var mgo = {}; if (lines('m_focus').length) mgo.focus = lines('m_focus'); if (lines('m_watch').length) mgo.watch = lines('m_watch'); if (val('m_lbl')) mgo.label = val('m_lbl'); if (val('m_cpa')) mgo.cost_per_result = val('m_cpa').replace(/[$,]/g, '');
+    if (Object.keys(mgo).length) c.meta_goals = mgo;
     if (val('f_drive')) c.drive_url = val('f_drive');
     if (val('x_inotes')) c.internal_notes = val('x_inotes');
     return c;
@@ -369,24 +452,25 @@
 
   document.addEventListener('click', function (e) {
     var a = e.target.closest('a.tlink, a.itab'); if (a && DIRTY && a.getAttribute('href')) { e.preventDefault(); return guard(function () { DIRTY = false; location.href = a.getAttribute('href'); }); }
-    var t = e.target.closest('[data-pick],[data-new],[data-del],[data-copy],[data-addsplit],[data-rmsplit],[data-ask],[data-cv],[data-tpl],[data-ghlfill],[data-ghlpick],[data-tab],[data-newtest]'); if (!t) return;
+    var t = e.target.closest('[data-pick],[data-new],[data-del],[data-copy],[data-addsplit],[data-rmsplit],[data-ask],[data-cv],[data-tpl],[data-ghlfill],[data-ghlpick],[data-tab],[data-newtest],[data-mv]'); if (!t) return;
+    if (t.dataset.mt != null && t.dataset.mv != null) return setMeta(t.dataset.mt, t.dataset.mv);
     if (t.dataset.tab) return setTab(t.dataset.tab);
     if (t.dataset.newtest) return guard(function () { ORIG = null; CUR = { test: true, name: 'Test client' }; TAB = 'dash'; drawList(); editTest(); });
     if (t.dataset.ghlfill) return ghlFill(true);
-    if (t.dataset.ghlpick) { $('f_ghl').value = t.dataset.ghlpick; setDirty(true); return ghlInfo(); }
+    if (t.dataset.ghlpick) { $('f_ghl').value = t.dataset.ghlpick; setDirty(true); sums(); return ghlInfo(); }
     if (t.dataset.cn != null && t.dataset.cv != null) return setConv(t.dataset.cn, t.dataset.cv);
     if (t.dataset.tpl != null) {
       var tp = TEMPLATES[+t.dataset.tpl], next = tp.apply();
       document.querySelectorAll('.tpl').forEach(function (b) { b.classList.toggle('on', b === t); });
-      setDirty(true);
-      var nm = $('f_name'); (nm && !nm.value ? nm : next || nm).focus();
+      setDirty(true); sums();
+      var nm = $('f_name'); openCard(nm && !nm.value ? nm : next || nm).focus();
       return;
     }
     if (t.dataset.ask) return answer(t.dataset.ask);
     if (t.dataset.pick) { if (t.dataset.pick === ORIG) return; return guard(function () { edit(LIST.filter(function (x) { return x.token === t.dataset.pick; })[0]); }); }
     if (t.dataset.new) return guard(function () { edit(null); $('f_name').focus(); });
-    if (t.dataset.addsplit) { $('splits').insertAdjacentHTML('beforeend', splitRow('video', '')); $('splits').lastElementChild.querySelector('.s_amt').focus(); return setDirty(true); }
-    if (t.dataset.rmsplit) { t.closest('.srow').remove(); return setDirty(true); }
+    if (t.dataset.addsplit) { $('splits').insertAdjacentHTML('beforeend', splitRow('video', '')); $('splits').lastElementChild.querySelector('.s_amt').focus(); setDirty(true); return sums(); }
+    if (t.dataset.rmsplit) { t.closest('.srow').remove(); setDirty(true); return sums(); }
     if (t.dataset.copy) {
       var label = t.textContent, done = function (ok) { t.textContent = ok ? 'Copied' : 'Copy failed, select and copy by hand'; setTimeout(function () { t.textContent = label; }, 1800); };
       try { navigator.clipboard.writeText(t.dataset.copy).then(function () { done(true); }, function () { done(false); }); } catch (er) { done(false); }
