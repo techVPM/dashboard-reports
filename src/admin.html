@@ -1,4 +1,4 @@
-<div class="vpm tm ad" id="vpm">
+<div class="vpm tm adm" id="vpm">
 <div class="wrap">
   <header class="tbar">
     <div class="brand">VIDEO POWER<span>MARKETING</span></div>
@@ -12,7 +12,7 @@
     <p class="err" id="gerr" hidden></p>
   </form>
   <p class="srcnote" id="src" hidden></p>
-  <div class="adgrid" id="app" hidden>
+  <div class="twocol" id="app" hidden>
     <aside class="panel clientlist">
       <button type="button" class="mbtn full" data-new="1">+ Add a client</button>
       <ul id="clist"></ul>
@@ -39,7 +39,7 @@
   var TZ = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona'], ['America/Los_Angeles', 'Pacific'], ['America/Anchorage', 'Alaska'], ['Pacific/Honolulu', 'Hawaii']];
   var TYPES = [['video', 'Video (YouTube and Demand Gen)'], ['search', 'Search'], ['pmax', 'Performance Max'], ['search+pmax', 'Search and Performance Max'], ['shopping', 'Shopping'], ['display', 'Display']];
   var TYPE_SHORT = { video: 'Video', search: 'Search', pmax: 'PMax', 'search+pmax': 'Search and PMax', shopping: 'Shopping', display: 'Display' };
-  var FORM_KEYS = ['name', 'customer_id', 'token', 'timezone', 'default_scope', 'disabled', 'include_paused', 'goals', 'notes', 'last_change_date', 'ads_url', 'ghl_contact_id', 'meta_ad_account', 'meta_goals', 'drive_url', 'internal_notes'];
+  var FORM_KEYS = ['name', 'customer_id', 'token', 'timezone', 'default_scope', 'disabled', 'include_paused', 'goals', 'notes', 'last_change_date', 'ads_url', 'ghl_contact_id', 'meta_ad_account', 'meta_goals', 'platforms', 'drive_url', 'internal_notes'];
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function slug(n, id) { return String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '-' + String(id || '').replace(/\D/g, '').slice(-4); }
   function money(v) { return '$' + Math.round(Number(v)).toLocaleString('en-US'); }
@@ -71,8 +71,11 @@
     var g = (c && c.goals) || {}, out = [], lbl = g.result_label || 'result';
     var one = String(lbl).toLowerCase().replace(/s$/, '');
     if (g.cost_per_conversion) out.push((/\d\s*(-|to)\s*\$?\d/.test(String(g.cost_per_conversion)) ? '$' + String(g.cost_per_conversion).replace(/\s*(-|to)\s*/, ' to $').replace(/\$\$/g, '$') : money(String(g.cost_per_conversion).replace(/[$,]/g, ''))) + ' per ' + one);
+    if (c && c.meta_goals && c.meta_goals.cost_per_result) out.push((c.platforms === 'meta' ? '' : 'Meta ') + money(c.meta_goals.cost_per_result) + ' per ' + String(c.meta_goals.label || 'result').toLowerCase().replace(/s$/, ''));
     var sp = [];
-    if (g.monthly_spend) sp.push(money(g.monthly_spend) + ' total');
+    if (g.total_budget) sp.push(money(g.total_budget) + ' all ads');
+    if (g.monthly_spend) sp.push(money(g.monthly_spend) + ' Google');
+    if (c && c.meta_goals && c.meta_goals.monthly_spend) sp.push(money(c.meta_goals.monthly_spend) + ' Meta');
     Object.keys(g.spend_by_type || {}).forEach(function (k) { sp.push(money(g.spend_by_type[k]) + ' ' + (TYPE_SHORT[k] || k)); });
     if (sp.length) out.push(sp.join(' + ') + ' a month');
     if (g.weekly_conversions) out.push(g.weekly_conversions + ' ' + lbl.toLowerCase() + ' a week');
@@ -107,6 +110,24 @@
   function card(id, title, body) {
     return '<details class="acard" data-card="' + id + '"' + (OPENCARD === id ? ' open' : '') + '><summary><span class="at"><b>' + title + '</b><small class="asum" id="sum_' + id + '"></small></span><span class="aopen"><span class="o">Edit</span><span class="c">Close</span></span></summary><div class="abody">' + body + '</div></details>';
   }
+  // show only the settings for the platforms this client runs
+  function applyPlat() {
+    var p = val('f_plat') || 'google', show = function (el, on) { if (el) el.hidden = !on; };
+    show($('f_cid') && $('f_cid').closest('label'), p !== 'meta');
+    show(document.querySelector('details[data-card=google]'), p !== 'meta');
+    show(document.querySelector('details[data-card=meta]'), p !== 'google');
+    var both = p === 'both';
+    show(document.querySelector('.bmode'), both);
+    if (!both && val('g_bmode') === 'total') { $('g_bmode').value = 'platform'; }
+    var tot = val('g_bmode') === 'total';
+    show($('b_total'), both && tot); show($('b_plat'), !both || !tot);
+    show($('g_ms') && $('g_ms').closest('label'), p !== 'meta');
+    show($('m_ms') && $('m_ms').closest('label'), p !== 'google');
+    ['splits'].forEach(function (id) { show($(id), p !== 'meta'); });
+    show(document.querySelector('.splith'), p !== 'meta'); show(document.querySelector('.addsplit'), p !== 'meta');
+    var ms = document.querySelector('details[data-card=meta] .cardsub'); if (ms) ms.textContent = p === 'meta' ? 'This client only runs Meta, so the whole report is built from Meta numbers.' : 'Meta results always show on their own, next to Google, never added together. Each platform counts results its own way.';
+    var mt = $('m_ms') && $('m_ms').closest('label').querySelector('span'); if (mt) mt.textContent = p === 'meta' ? 'Meta budget per month' : 'Meta per month';
+  }
   function openCard(el) {
     var d = el && el.closest ? el.closest('details.acard') : null;
     if (d && !d.open) d.open = true;
@@ -116,13 +137,15 @@
   function sums() {
     var put = function (id, parts, empty) { var el = $('sum_' + id); if (!el) return; parts = parts.filter(Boolean); el.textContent = parts.length ? parts.join(' · ') : empty; el.closest('details').classList.toggle('isset', !!parts.length); };
     var tzo = $('f_tz'), tzl = tzo && tzo.selectedIndex > -1 ? tzo.options[tzo.selectedIndex].text : '';
-    put('basics', [val('f_name'), val('f_cid') ? 'Google Ads ' + val('f_cid') : 'No Google Ads ID yet', tzl, val('f_scope') === 'vpm' ? 'VPM campaigns only' : 'All campaigns'], 'Name and Google Ads ID');
+    var pl = val('f_plat');
+    put('basics', [val('f_name'), pl === 'meta' ? 'Meta only' : pl === 'both' ? 'Google and Meta' : 'Google Ads only', pl === 'meta' ? '' : val('f_cid') ? 'Google Ads ' + val('f_cid') : 'No Google Ads ID yet', tzl, val('f_scope') === 'vpm' ? 'VPM campaigns only' : 'All campaigns'], 'Name and Google Ads ID');
     var gm = lines('g_focus');
     put('google', [val('g_lbl'), val('g_cpa') ? 'goal ' + moneyS(val('g_cpa')) + ' each' : '', val('g_vol') ? val('g_vol') + ' a ' + val('g_volp') : '', gm.length ? gm.length + ' main conversion' + (gm.length > 1 ? 's' : '') : (val('f_cid') ? 'No main conversion picked' : '')], 'No goal set yet');
     var mm = lines('m_focus');
     put('meta', val('f_meta') ? [val('f_meta'), val('m_lbl'), val('m_cpa') ? 'goal ' + moneyS(val('m_cpa')) + ' each' : '', mm.length ? mm.length + ' result type' + (mm.length > 1 ? 's' : '') + ' picked' : 'Results not picked yet'] : [], 'Not set up. Add the Meta ad account ID to show Meta results.');
     var sp = Array.prototype.map.call(document.querySelectorAll('#splits .srow'), function (r) { var t = r.querySelector('.s_type'), v = r.querySelector('.s_amt').value; return v ? t.options[t.selectedIndex].text + ' ' + moneyS(v) : ''; });
-    put('budget', [val('g_ms') ? moneyS(val('g_ms')) + ' a month in total' : ''].concat(sp), 'No budget set');
+    var bt = val('g_bmode') === 'total';
+    put('budget', (bt ? [val('g_tot') ? moneyS(val('g_tot')) + ' a month for all ads' : ''] : [val('g_ms') ? 'Google ' + moneyS(val('g_ms')) + ' a month' : '', val('m_ms') ? 'Meta ' + moneyS(val('m_ms')) + ' a month' : '']).concat(sp.length ? ['Google split: ' + sp.join(', ')] : []), 'No budget set');
     put('more', [val('g_roas') ? 'Return goal ' + val('g_roas') + 'x' : '', val('g_note') ? 'Goal note set' : ''], 'Optional. Nothing set.');
     put('extras', [val('x_note') ? 'Note to the client set' : '', val('x_lcd') ? 'Last big change ' + dshort(val('x_lcd')) : ''], 'Optional. Nothing set.');
     var gx = ghlById(val('f_ghl'));
@@ -148,7 +171,8 @@
     var adv = {}; Object.keys(CUR).forEach(function (k) { if (FORM_KEYS.indexOf(k) < 0) adv[k] = CUR[k]; });
     var link = ORIG ? SITE + '/' + ORIG : '', sm = summary(CUR);
     var volN = g.weekly_conversions || g.monthly_conversions || '', volP = g.weekly_conversions ? 'week' : 'month';
-    var mg = CUR.meta_goals || {};
+    var mg = CUR.meta_goals || {}, bmode = g.total_budget ? 'total' : 'platform';
+    var plat = ['google', 'meta', 'both'].indexOf(CUR.platforms) > -1 ? CUR.platforms : String(CUR.customer_id || '').replace(/\D/g, '') ? (CUR.meta_ad_account ? 'both' : 'google') : (CUR.meta_ad_account ? 'meta' : 'google');
     if (!keepTab) OPENCARD = ORIG ? null : 'basics';
 
     $('form').innerHTML =
@@ -162,6 +186,7 @@
       '<p class="cardhint">Click a card to open it. One card opens at a time, and each one shows what is filled in when it is closed.</p><div class="acards">' +
       card('basics', 'Client basics', '<div class="fgrid g3">' +
         f('Client name', 'f_name', CUR.name) +
+        '<label class="fld"><span>Ad platforms</span><select id="f_plat">' + [['google', 'Google Ads only'], ['meta', 'Meta only'], ['both', 'Google and Meta']].map(function (o) { return '<option value="' + o[0] + '"' + (plat === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select><small>Sets which cards show here and how the report is laid out.</small></label>' +
         f('Google Ads ID', 'f_cid', CUR.customer_id, '', 'text', '123-456-7890') +
         '<label class="fld"><span>Ads account time zone</span><select id="f_tz">' + TZ.map(function (z) { return '<option value="' + z[0] + '"' + ((CUR.timezone || 'America/Denver') === z[0] ? ' selected' : '') + '>' + z[1] + '</option>'; }).join('') + '</select></label>' +
         '<label class="fld wide"><span>Campaigns we manage</span><select id="f_scope"><option value="all"' + (CUR.default_scope === 'vpm' ? '' : ' selected') + '>All campaigns in the account</option><option value="vpm"' + (CUR.default_scope === 'vpm' ? ' selected' : '') + '>Only campaigns with VPM in the name</option></select><small>Sets what the client report, goals and team dashboard show first. Anyone can still switch between VPM, not VPM and all campaigns.</small></label>' +
@@ -186,9 +211,14 @@
           '<input type="hidden" id="m_focus" value="' + esc((mg.focus || []).join('\n')) + '"><input type="hidden" id="m_watch" value="' + esc((mg.watch || []).join('\n')) + '"></div>' +
       '</div>') +
 
-      card('budget', 'Budget', '<p class="sub cardsub">Monthly spend. Add a split if budgets are set per campaign type.</p><div class="fgrid g3">' +
-        f('Whole account, per month', 'g_ms', g.monthly_spend, 'Optional') +
-      '</div><div class="splits" id="splits">' + Object.keys(sbt).map(function (k) { return splitRow(k, sbt[k]); }).join('') + '</div><button type="button" class="tlink addsplit" data-addsplit="1">+ Add a split by campaign type</button>') +
+      card('budget', 'Budget', '<p class="sub cardsub">Set one budget for all ads, or a budget for each platform. Either way you can break Google down by campaign type.</p>' +
+        '<input type="hidden" id="g_bmode" value="' + bmode + '"><div class="bmode" role="radiogroup" aria-label="How the budget is set">' +
+          '<button type="button" role="radio" data-bmode="total" aria-checked="' + (bmode === 'total') + '" class="' + (bmode === 'total' ? 'on' : '') + '"><b>One total for all ads</b><small>Google and Meta share one monthly budget</small></button>' +
+          '<button type="button" role="radio" data-bmode="platform" aria-checked="' + (bmode === 'platform') + '" class="' + (bmode === 'platform' ? 'on' : '') + '"><b>Budget per platform</b><small>A monthly budget for Google and one for Meta</small></button></div>' +
+        '<div class="fgrid g3" id="b_total"' + (bmode === 'total' ? '' : ' hidden') + '>' + f('Total ads budget per month', 'g_tot', g.total_budget, 'Google and Meta together') + '</div>' +
+        '<div class="fgrid g3" id="b_plat"' + (bmode === 'platform' ? '' : ' hidden') + '>' + f('Google Ads per month', 'g_ms', g.monthly_spend, 'Optional') + f('Meta per month', 'm_ms', mg.monthly_spend, 'Optional') + '</div>' +
+        '<p class="splith">Break Google down by campaign type <span>(optional)</span></p>' +
+      '<div class="splits" id="splits">' + Object.keys(sbt).map(function (k) { return splitRow(k, sbt[k]); }).join('') + '</div><button type="button" class="tlink addsplit" data-addsplit="1">+ Add a split by campaign type</button>') +
 
       card('more', 'More goal options', '<div class="fgrid">' +
         f('Target return on ad spend', 'g_roas', g.roas, 'For example 4 means $4 back for every $1. Needs revenue tracking.') +
@@ -217,6 +247,7 @@
 
       '<div class="savebar"><span class="dirty" id="dirty" hidden>Unsaved changes</span><p class="err" id="ferr" hidden></p><p class="ok" id="fok" hidden></p><span class="sp"></span>' +
         (ORIG ? '<button type="button" class="obtn danger" data-del="1">Delete</button>' : '') + '<button type="submit" class="mbtn">' + (ORIG ? 'Save changes' : 'Add client') + '</button></div></div>';
+    applyPlat();
     loadConversions();
     loadMetaConv();
     loadGhl();
@@ -386,7 +417,7 @@
   ];
   function setDirty(v) { DIRTY = v; var d = $('dirty'); if (d) d.hidden = !v; if (v) { var ok = $('fok'); if (ok) ok.hidden = true; } }
   $('form').addEventListener('input', function (e) { if (e.target.id === 'f_journey') return; setDirty(true); sums(); });
-  $('form').addEventListener('change', function (e) { if (e.target.id === 'f_journey') return setJourney(e.target.checked); setDirty(true); if (e.target.id === 'f_cid') { loadConversions(); ghlInfo(); } if (e.target.id === 'f_ghl') { ghlFill(false); ghlInfo(); } if (e.target.id === 'g_focus' || e.target.id === 'g_sec') drawPicker(); if (e.target.id === 'f_meta') loadMetaConv(); sums(); });
+  $('form').addEventListener('change', function (e) { if (e.target.id === 'f_journey') return setJourney(e.target.checked); setDirty(true); if (e.target.id === 'f_cid') { loadConversions(); ghlInfo(); } if (e.target.id === 'f_ghl') { ghlFill(false); ghlInfo(); } if (e.target.id === 'g_focus' || e.target.id === 'g_sec') drawPicker(); if (e.target.id === 'f_meta') loadMetaConv(); if (e.target.id === 'f_plat') applyPlat(); sums(); });
 
   function val(id) { var el = $(id); return el ? el.value.trim() : ''; }
   function numv(id) { var v = val(id).replace(/[$,]/g, ''); return v === '' ? undefined : Number(v); }
@@ -396,7 +427,8 @@
     var adv = {}, a = val('x_adv');
     if (a) { try { adv = JSON.parse(a); } catch (e) { throw new Error('Advanced settings are not valid JSON.'); } }
     var c = Object.assign({}, adv);
-    c.name = val('f_name'); c.customer_id = val('f_cid'); c.token = val('f_tok') || slug(c.name, c.customer_id);
+    c.platforms = val('f_plat') || 'google';
+    c.name = val('f_name'); c.customer_id = c.platforms === 'meta' && !val('f_cid').replace(/\D/g, '') ? '' : val('f_cid'); c.token = val('f_tok') || slug(c.name, c.platforms === 'meta' && !c.customer_id ? val('f_meta') : c.customer_id);
     c.timezone = val('f_tz');
     if (val('f_scope') === 'vpm') c.default_scope = 'vpm';
     if ($('f_paused').checked) c.include_paused = true;
@@ -406,7 +438,7 @@
     if (val('g_lbl')) g.result_label = val('g_lbl');
     if (lines('g_focus').length) g.focus_conversions = lines('g_focus');
     if (lines('g_sec').length) g.secondary_conversions = lines('g_sec');
-    if (numv('g_ms')) g.monthly_spend = numv('g_ms');
+    if (val('g_bmode') === 'total') { if (numv('g_tot')) g.total_budget = numv('g_tot'); } else if (numv('g_ms')) g.monthly_spend = numv('g_ms');
     var sbt = {};
     Array.prototype.forEach.call(document.querySelectorAll('#splits .srow'), function (r) { var t = r.querySelector('.s_type').value, v = Number(String(r.querySelector('.s_amt').value).replace(/[$,]/g, '')); if (v > 0) sbt[t] = (sbt[t] || 0) + v; });
     if (Object.keys(sbt).length) g.spend_by_type = sbt;
@@ -419,7 +451,7 @@
     if (val('x_ads')) c.ads_url = val('x_ads');
     if (val('f_ghl')) c.ghl_contact_id = val('f_ghl');
     if (val('f_meta')) c.meta_ad_account = val('f_meta');
-    var mgo = {}; if (lines('m_focus').length) mgo.focus = lines('m_focus'); if (lines('m_watch').length) mgo.watch = lines('m_watch'); if (val('m_lbl')) mgo.label = val('m_lbl'); if (val('m_cpa')) mgo.cost_per_result = val('m_cpa').replace(/[$,]/g, '');
+    var mgo = {}; if (lines('m_focus').length) mgo.focus = lines('m_focus'); if (lines('m_watch').length) mgo.watch = lines('m_watch'); if (val('m_lbl')) mgo.label = val('m_lbl'); if (val('m_cpa')) mgo.cost_per_result = val('m_cpa').replace(/[$,]/g, ''); if (val('g_bmode') !== 'total' && numv('m_ms')) mgo.monthly_spend = numv('m_ms');
     if (Object.keys(mgo).length) c.meta_goals = mgo;
     if (val('f_drive')) c.drive_url = val('f_drive');
     if (val('x_inotes')) c.internal_notes = val('x_inotes');
@@ -452,8 +484,9 @@
 
   document.addEventListener('click', function (e) {
     var a = e.target.closest('a.tlink, a.itab'); if (a && DIRTY && a.getAttribute('href')) { e.preventDefault(); return guard(function () { DIRTY = false; location.href = a.getAttribute('href'); }); }
-    var t = e.target.closest('[data-pick],[data-new],[data-del],[data-copy],[data-addsplit],[data-rmsplit],[data-ask],[data-cv],[data-tpl],[data-ghlfill],[data-ghlpick],[data-tab],[data-newtest],[data-mv]'); if (!t) return;
+    var t = e.target.closest('[data-pick],[data-new],[data-del],[data-copy],[data-addsplit],[data-rmsplit],[data-ask],[data-cv],[data-tpl],[data-ghlfill],[data-ghlpick],[data-tab],[data-newtest],[data-mv],[data-bmode]'); if (!t) return;
     if (t.dataset.mt != null && t.dataset.mv != null) return setMeta(t.dataset.mt, t.dataset.mv);
+    if (t.dataset.bmode) { $('g_bmode').value = t.dataset.bmode; document.querySelectorAll('[data-bmode]').forEach(function (b) { var on = b === t; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); }); $('b_total').hidden = t.dataset.bmode !== 'total'; $('b_plat').hidden = t.dataset.bmode === 'total'; setDirty(true); return sums(); }
     if (t.dataset.tab) return setTab(t.dataset.tab);
     if (t.dataset.newtest) return guard(function () { ORIG = null; CUR = { test: true, name: 'Test client' }; TAB = 'dash'; drawList(); editTest(); });
     if (t.dataset.ghlfill) return ghlFill(true);

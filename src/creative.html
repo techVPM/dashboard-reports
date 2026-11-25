@@ -17,6 +17,7 @@
     <div class="grow"><input type="password" id="pw" autocomplete="current-password" aria-label="Password" placeholder="Password"><button class="mbtn" type="submit">Sign in</button></div>
     <p class="err" id="gerr" hidden></p>
   </form>
+  <section class="crmode" id="crmode" hidden><div class="seg" id="mode" role="group" aria-label="View"></div><div class="crumb" id="crumb"></div></section>
   <section class="panel filters" id="filters" hidden>
     <div class="fld"><span>Campaigns</span><div class="seg" id="scp" role="group" aria-label="Which campaigns"></div></div>
     <label class="fld"><span>Client</span><select id="fclient"></select></label>
@@ -40,7 +41,7 @@
   var KEY = 'vpm_admin_key', pw = '';
   try { pw = localStorage.getItem(KEY) || ''; } catch (e) { /* private mode */ }
   var $ = function (id) { return document.getElementById(id); };
-  var SCOPE = 'vpm', DATA = null, DAYS = 30, CFROM = '', CTO = '', GEN = 0, SORT = ['ctr', -1], SHOW = 50, VIEWROWS = [];
+  var MODE = 'accounts', ACC = null, SCOPE = 'vpm', DATA = null, DAYS = 30, CFROM = '', CTO = '', GEN = 0, SORT = ['ctr', -1], SHOW = 50, VIEWROWS = [];
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function money(v) { return v == null ? 'n/a' : '$' + Math.round(v).toLocaleString('en-US'); }
   function money2(v) { return v == null ? 'n/a' : '$' + (v >= 1000 ? Math.round(v).toLocaleString('en-US') : v.toFixed(2)); }
@@ -67,7 +68,7 @@
   // Custom dates are fetched live from Google, three clients at a time, filling in as each one arrives.
   function loadCustom(j, gen) {
     var q = (j.tokens || []).slice(), total = q.length, done = 0, fails = [];
-    DATA.videos = []; DATA.missing = []; DATA.range = { from: CFROM, to: CTO };
+    DATA.videos = []; DATA.accounts = []; DATA.missing = []; DATA.range = { from: CFROM, to: CTO };
     function prog() {
       $('cprog').hidden = done >= total; $('cfill').style.width = (total ? done / total * 100 : 100) + '%';
       $('ctext').textContent = 'Loading ' + dlab(CFROM) + ' to ' + dlab(CTO) + ' from Google: ' + done + ' of ' + total + ' clients. Each takes about 10 to 30 seconds.';
@@ -76,14 +77,15 @@
     function next() {
       var c = q.shift(); if (!c) return;
       api('/api/creative?token=' + encodeURIComponent(c.token) + '&from=' + CFROM + '&to=' + CTO + '&scope=' + SCOPE)
-        .then(function (r) { if (gen !== GEN) return; DATA.videos = DATA.videos.concat(r.videos || []); }, function () { fails.push(c.name); })
+        .then(function (r) { if (gen !== GEN) return; DATA.videos = DATA.videos.concat(r.videos || []); if (r.account) { DATA.accounts.push(r.account); DATA.accounts.sort(function (a, b) { return b.spend - a.spend; }); } }, function () { fails.push(c.name); })
         .then(function () { if (gen !== GEN) return; done++; DATA.missing = fails; prog(); header(); draw(); next(); });
     }
     next(); next(); next();
   }
   function header() {
     var j = DATA;
-    $('tsub').textContent = (j.range ? dlab(j.range.from) + ' to ' + dlab(j.range.to) + '. ' : '') + 'Every video running for active clients' + (SCOPE === 'vpm' ? ', in VPM campaigns (vpm in the campaign name)' : SCOPE === 'other' ? ', in campaigns without vpm in the name' : '') + '. Same video in several campaigns is added together.';
+    if (MODE === 'accounts') $('tsub').textContent = (j.range ? dlab(j.range.from) + ' to ' + dlab(j.range.to) + '. ' : '') + 'How each client account is doing. Click an account to see its videos.';
+    else $('tsub').textContent = (j.range ? dlab(j.range.from) + ' to ' + dlab(j.range.to) + '. ' : '') + 'Every video running for active clients' + (SCOPE === 'vpm' ? ', in VPM campaigns (vpm in the campaign name)' : SCOPE === 'other' ? ', in campaigns without vpm in the name' : '') + '. Same video in several campaigns is added together.';
     $('foot').textContent = j.missing.length ? (DAYS === 'custom' ? 'Could not load: ' + j.missing.join(', ') + '.' : 'No saved data yet for: ' + j.missing.join(', ') + '. It fills in after the next 10 am refresh, or open that client on the All clients page and press Load now.') : '';
   }
   function load() {
@@ -93,7 +95,7 @@
     $('list').innerHTML = '<div class="panel"><p class="msg">Loading every video</p></div>';
     api('/api/creative?days=' + (DAYS === 'custom' ? 30 : DAYS) + '&scope=' + SCOPE).then(function (j) {
       if (gen !== GEN) return;
-      DATA = j; $('gate').hidden = true; $('gerr').hidden = true; $('out').hidden = false; $('filters').hidden = false; $('tctl').hidden = false;
+      DATA = j; DATA.accounts = j.accounts || []; $('crmode').hidden = false; $('gate').hidden = true; $('gerr').hidden = true; $('out').hidden = false; $('filters').hidden = false; $('tctl').hidden = false;
       var cur = $('fclient').value || 'all';
       $('fclient').innerHTML = '<option value="all">All clients</option>' + j.clients.map(function (c) { return '<option' + (c === cur ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
       controls();
@@ -169,11 +171,49 @@
     var u = underSet(), L = rows.filter(function (v) { return u.has(v); }).sort(function (a, b) { return a.cpa - b.cpa; }).slice(0, 3);
     return '<div class="panel lead under"><h3>Underfunded winners</h3><p class="sub">Good cost per conversion, under 10% of the campaign spend. Worth more budget.</p>' + (L.length ? '<ol>' + L.map(function (v) { return '<li><button type="button" data-k="' + esc(keyOf(v)) + '" data-play="' + esc(v.video_id) + '" data-title="' + esc(v.title) + '" data-meta="' + esc(v.client) + '"><b>' + money2(v.cpa) + '</b><span>' + esc(v.title) + '<small>' + esc(v.client) + ', ' + pct(v.spend_share, 0) + ' of campaign spend</small></span></button></li>'; }).join('') + '</ol>' : '<p class="msg small">None right now.</p>') + '</div>';
   }
+  /* ---------- accounts overview: one card per client, click in to see its videos ---------- */
+  function drawMode() {
+    $('mode').innerHTML = [['accounts', 'Accounts overview'], ['videos', 'All videos']].map(function (o) { var on = o[0] === 'accounts' ? MODE === 'accounts' : MODE === 'videos' && !ACC; return '<button type="button" data-mode="' + o[0] + '" class="' + (on ? 'on' : '') + '" aria-pressed="' + on + '">' + o[1] + '</button>'; }).join('');
+    $('crumb').innerHTML = MODE === 'videos' && ACC ? '<button type="button" class="tlink" data-mode="accounts">&larr; All accounts</button> <b>' + esc(ACC) + '</b>' : '';
+    $('filters').hidden = MODE === 'accounts';
+  }
+  function chg(cur, prev, low) {
+    if (cur == null || !prev) return '';
+    var c = (cur - prev) / prev, good = low ? c <= 0 : c >= 0;
+    return '<span class="delta ' + (Math.abs(c) < 0.02 ? '' : good ? 'good' : 'bad') + '">' + (c >= 0 ? '+' : '') + Math.round(c * 100) + '%</span>';
+  }
+  function accCard(a) {
+    var one = String(a.result_label || 'result').toLowerCase().replace(/ies$/, 'y').replace(/s$/, '');
+    var gk = a.cpa == null || !a.goal_cpa ? '' : a.cpa <= a.goal_cpa ? 'good' : a.cpa <= a.goal_cpa * 1.15 ? 'warn' : 'bad';
+    var tv = a.top_video, img = tv && vidOk(tv.video_id) ? ' style="background-image:url(https://i.ytimg.com/vi/' + tv.video_id + '/mqdefault.jpg)"' : '';
+    return '<article class="acc"><button type="button" class="accmain" data-acc="' + esc(a.client) + '"><div class="acch"><b>' + esc(a.client) + '</b><span>' + money(a.spend) + (a.platform === 'meta' ? ' on Meta' : ' on Google') + '</span></div>' +
+      '<div class="accbig"><div><small>' + esc(a.result_label) + '</small><strong>' + int(a.results) + '</strong></div><div class="' + gk + '"><small>Cost per ' + esc(one) + '</small><strong>' + money2(a.cpa) + '</strong>' + chg(a.cpa, a.prev_cpa, true) + '</div></div>' +
+      (a.goal_cpa ? '<p class="accgoal ' + gk + '">' + (gk === 'good' ? 'Within' : gk ? 'Above' : 'Goal:') + ' the ' + money2(a.goal_cpa) + ' goal</p>' : '') +
+      '<div class="accsm">' + (a.platform === 'meta' ? '<span class="mtag">Meta only</span>' : '') + '<span>CTR <b>' + pct(a.ctr) + '</b></span>' + (a.platform === 'meta' ? '<span>Meta ads <b>' + int(a.meta_ads) + '</b></span>' : '<span>Videos <b>' + int(a.videos) + '</b>' + (a.running ? ' (' + a.running + ' running)' : '') + '</span>') + (a.new_videos ? '<span class="new">' + a.new_videos + ' new this week</span>' : '') + (a.video_share != null && a.platform !== 'meta' ? '<span>Video share of spend <b>' + pct(a.video_share, 0) + '</b></span>' : '') + '</div>' +
+      (a.platform === 'meta' ? '' : tv ? '<div class="acctop"><span class="pic"' + img + '></span><span><small>' + (tv.cpa != null ? 'Best video' : 'Most seen video') + '</small><b>' + esc(tv.title) + '</b>' + (tv.cpa != null ? '<em>' + money2(tv.cpa) + ' per ' + esc(one) + '</em>' : '') + '</span></div>' : '<p class="sub">No videos in this range.</p>') +
+      (a.meta ? '<div class="accmeta"><span class="mdot"></span><b>Meta</b> ' + money(a.meta.spend) + ' · ' + int(a.meta.results) + ' ' + esc(a.meta.label.toLowerCase()) + (a.meta.cpa != null ? ' at ' + money2(a.meta.cpa) + ' each ' + chg(a.meta.cpa, a.meta.prev_cpa, true) : '') + '</div>' : '') +
+      '<span class="accgo">View videos &rarr;</span></button></article>';
+  }
+  function drawAccounts() {
+    var A = DATA.accounts || [], gs = 0, ms = 0, vr = 0, hasM = false;
+    A.forEach(function (a) { gs += a.spend; vr += a.running; if (a.meta) { hasM = true; ms += a.meta.spend; } });
+    $('sum').innerHTML = [['Accounts', int(A.length)], ['Google spend', money(gs)]].concat(hasM ? [['Meta spend', money(ms)]] : [], [['Videos running', int(vr)], ['Videos in range', int(DATA.videos.length)]]).map(function (x) { return '<div class="kpi"><div class="l">' + x[0] + '</div><div class="v">' + x[1] + '</div></div>'; }).join('');
+    $('leaders').innerHTML = '';
+    $('list').innerHTML = A.length ? '<div class="accs">' + A.map(accCard).join('') + '</div><p class="sub legend2">Green is within the cost goal, red is more than 15% over it. Changes compare with the period before. Meta is shown on its own line and never added to Google\'s results.</p>' : '<div class="panel"><p class="msg">No account data yet.</p></div>';
+  }
+  function accSum(name) {
+    var a = (DATA.accounts || []).filter(function (x) { return x.client === name; })[0]; if (!a) return '';
+    var x = [['Google spend', money(a.spend)], [a.result_label, int(a.results)], ['Cost per result', money2(a.cpa)], ['CTR', pct(a.ctr)], ['Videos', int(a.videos)]];
+    if (a.meta) x.push(['Meta ' + a.meta.label.toLowerCase(), int(a.meta.results) + (a.meta.cpa != null ? ' at ' + money2(a.meta.cpa) : '')]);
+    return x.map(function (y) { return '<div class="kpi"><div class="l">' + esc(y[0]) + '</div><div class="v">' + y[1] + '</div></div>'; }).join('');
+  }
   function draw() {
+    drawMode(); header();
+    if (MODE === 'accounts') return drawAccounts();
     var rows = filtered();
     var tot = rows.reduce(function (a, v) { a.s += v.spend; a.i += v.impressions; a.c += v.clicks; a.r += v.results; return a; }, { s: 0, i: 0, c: 0, r: 0 });
-    $('sum').innerHTML = [['Videos', int(rows.length)], ['Impressions', int(tot.i)], ['Clicks', int(tot.c)], ['Average CTR', tot.i ? pct(tot.c / tot.i) : 'n/a'], ['Conversions', int(tot.r)], ['Spend', money(tot.s)]].map(function (x) { return '<div class="kpi"><div class="l">' + x[0] + '</div><div class="v">' + x[1] + '</div></div>'; }).join('');
-    $('leaders').innerHTML = rows.length ? leaders(rows) : '';
+    $('sum').innerHTML = ACC ? accSum(ACC) : [['Videos', int(rows.length)], ['Impressions', int(tot.i)], ['Clicks', int(tot.c)], ['Average CTR', tot.i ? pct(tot.c / tot.i) : 'n/a'], ['Conversions', int(tot.r)], ['Spend', money(tot.s)]].map(function (x) { return '<div class="kpi"><div class="l">' + x[0] + '</div><div class="v">' + x[1] + '</div></div>'; }).join('');
+    $('leaders').innerHTML = rows.length >= 4 ? leaders(rows) : '';
     var k = SORT[0], d = SORT[1];
     rows.sort(function (a, b) { var x = a[k], y = b[k]; if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return (typeof x === 'string' ? x.localeCompare(y) : x - y) * d; });
     VIEWROWS = rows;
@@ -209,13 +249,15 @@
     $('modal').hidden = false;
   }
   function close() { $('modal').hidden = true; $('mvideo').innerHTML = ''; }
-  ['fclient', 'fmin', 'fshow'].forEach(function (id) { $(id).addEventListener('change', function () { SHOW = 50; draw(); }); });
+  ['fclient', 'fmin', 'fshow'].forEach(function (id) { $(id).addEventListener('change', function () { SHOW = 50; if (id === 'fclient') ACC = $('fclient').value === 'all' ? null : $('fclient').value; draw(); }); });
   $('fq').addEventListener('input', function () { SHOW = 50; draw(); });
   $('csv').addEventListener('click', csv);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('modal').hidden) close(); });
   document.addEventListener('click', function (e) {
     if (e.target === $('modal')) return close();
-    var t = e.target.closest('[data-d],[data-sort],[data-more],[data-play],[data-close],[data-s]'); if (!t) return;
+    var t = e.target.closest('[data-d],[data-sort],[data-more],[data-play],[data-close],[data-s],[data-mode],[data-acc]'); if (!t) return;
+    if (t.dataset.mode) { MODE = t.dataset.mode; ACC = null; $('fclient').value = 'all'; SHOW = 50; draw(); window.scrollTo(0, 0); return; }
+    if (t.dataset.acc) { MODE = 'videos'; ACC = t.dataset.acc; $('fclient').value = ACC; $('fmin').value = '0'; SHOW = 50; draw(); window.scrollTo(0, 0); return; }
     if (t.dataset.s) { SCOPE = t.dataset.s; return load(); }
     if (t.dataset.close) return close();
     if (t.dataset.d) {

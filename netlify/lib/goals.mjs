@@ -44,12 +44,13 @@ export function cleanGoals(g) {
     secondary_conversions: names(g.secondary_conversions),
     roas: num(g.roas),
     monthly_conversions: num(g.monthly_conversions),
-    monthly_spend: num(g.monthly_spend),
+    monthly_spend: num(g.monthly_spend),            // Google Ads budget a month
+    total_budget: num(g.total_budget),              // one budget for all ads (Google and Meta together)
     focus_conversions: focus,
     result_label: String(g.result_label || '').trim(),
     note: String(g.note || '').trim(),
   };
-  out.any = !!(out.cost_per_conversion || out.roas || out.monthly_conversions || out.weekly_conversions || out.monthly_spend || out.spend_by_type.length || out.focus_conversions.length || out.note);
+  out.any = !!(out.total_budget || out.cost_per_conversion || out.roas || out.monthly_conversions || out.weekly_conversions || out.monthly_spend || out.spend_by_type.length || out.focus_conversions.length || out.note);
   return out;
 }
 

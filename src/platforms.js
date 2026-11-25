@@ -2,6 +2,7 @@
    Google and Meta count results in different ways (different attribution windows, different
    definitions), so their results are never added together. Spend can be totaled, results cannot. */
 var MP = null;                 // Meta data from the report, or null
+function metaOnlyRpt() { return META && META.platform === 'meta'; }   // a client who only runs Meta
 var PLAT_VIEW = ['Google and Meta', 'Each platform\'s results, side by side'];
 S.plat = 'both';
 ICON.platforms = '<rect x="2.5" y="4" width="6.5" height="12" rx="1.5"/><rect x="11" y="4" width="6.5" height="12" rx="1.5"/>';
@@ -11,7 +12,7 @@ function setPlatforms(P) {
   var m = P && P.platforms && P.platforms.meta;
   MP = m && (m.daily || m.error) ? m : null;
   // A Meta error is for the team. Clients only see the tab when there is Meta data to show.
-  var show = MP && (MP.daily || S.team);
+  var show = MP && (MP.daily || S.team) && !(P.meta && P.meta.platform === 'meta');
   var next = {};
   Object.keys(VIEWS).forEach(function (k) { if (k === 'platforms') return; next[k] = VIEWS[k]; if (k === 'overview' && show) next.platforms = PLAT_VIEW; });
   Object.keys(VIEWS).forEach(function (k) { delete VIEWS[k]; });
@@ -127,12 +128,12 @@ function metaAds() {
   var ads = (MP.ads || []).filter(function (a) { return a.spend > 0; });
   if (!ads.length) return '<p class="msg">No Meta ads with spend in this range.</p>';
   var one = sing(metaLabel());
-  return '<div class="mads">' + ads.slice(0, 12).map(function (a) {
+  return '<div class="mcards">' + ads.slice(0, 12).map(function (a) {
     var cpr = a.results ? a.spend / a.results : null;
     var img = a.thumb ? '<img src="' + esc(a.thumb) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : (a.video ? '' : '<span class="noimg">Ad</span>');
     var inner = '<div class="mimg">' + img + (a.video ? '<span class="play" aria-hidden="true"></span>' : '') + '</div><div class="mtx"><b>' + esc(a.name) + '</b>' + (a.body ? '<p>' + esc(a.body.length > 110 ? a.body.slice(0, 107) + '...' : a.body) + '</p>' : '') +
-      '<div class="mnum"><span>' + money(a.spend) + ' spent</span><span>' + int(a.results) + ' ' + esc(metaLabel().toLowerCase()) + '</span><span>' + (cpr == null ? 'n/a' : money2(cpr)) + ' per ' + esc(one) + '</span></div></div>';
-    return a.post ? '<a class="mad" href="' + esc(a.post) + '" target="_blank" rel="noopener">' + inner + '</a>' : '<div class="mad">' + inner + '</div>';
+      '<div class="mnum"><span>' + money(a.spend) + ' spent</span><span>' + int(a.results) + ' ' + esc(metaLabel().toLowerCase()) + '</span><span>' + (cpr == null ? 'n/a' : money2(cpr)) + ' per ' + esc(one) + '</span><span>' + int(a.clicks) + ' clicks' + (a.impressions ? ' (' + pct(a.clicks / a.impressions) + ' click rate)' : '') + '</span></div></div>';
+    return a.post ? '<a class="mcard" href="' + esc(a.post) + '" target="_blank" rel="noopener">' + inner + '</a>' : '<div class="mcard">' + inner + '</div>';
   }).join('') + '</div>';
 }
 
@@ -142,8 +143,8 @@ function vPlatforms() {
   if (MP && MP.error && !MP.daily) return sw + panel('Meta', '', '<p class="msg">' + esc(MP.error) + '</p><p class="msg small">Only the VPM team sees this message.</p>');
   var G = googleAgg(), M = metaAgg(), gl = rlab(), ml = metaLabel();
   var gCard = platCard('google', G, gl, googleGoal()), mCard = platCard('meta', M, ml, metaGoal(), metaExtra(M));
-  var note = '<p class="pnote">Google and Meta each count results their own way, so we show them side by side and never add them together.' + (HASMIX && S.scope !== 'all' ? ' The campaign filter above applies to Google only.' : '') + '</p>';
-  var gc = 'var(--c1)', mc = 'var(--c3)';
+  var note = '<p class="pnote">Google and Meta each count results their own way, so we show them side by side and never add them together.' + (HASMIX && S.scope !== 'all' ? ' The campaign filter above applies to both platforms; people reached is only shown for all campaigns.' : '') + '</p>';
+  var gc = 'var(--gg)', mc = 'var(--c3)';
   if (S.plat === 'google') {
     return sw + gCard + panel('Daily ' + esc(gl.toLowerCase()) + ' on Google', 'Averaged over 7 days to smooth out busy and quiet days', dualChart([{ n: 'Google: ' + gl, c: gc, v: smooth(G.days.map(function (d) { return d.res; })) }], { aria: 'Google results per day' })) +
       '<div class="panel plinks"><b>More Google detail</b><div><button class="obtn2" data-go="campaigns">Campaigns</button><button class="obtn2" data-go="creative">Ads and creative</button><button class="obtn2" data-go="weekly">Week by week</button></div></div>';
@@ -166,7 +167,7 @@ function vPlatforms() {
 }
 // The top of Overview when Meta is running: both platforms at a glance, results kept apart
 function metaStrip() {
-  if (!MP || !MP.daily) return '';
+  if (!MP || !MP.daily || metaOnlyRpt()) return '';
   var G = googleAgg(), M = metaAgg(), gl = rlab(), ml = metaLabel();
   var cell = function (k, P, label, goal) {
     var c = P.cur, p = P.pri, cost = c.res ? c.spend / c.res : null, pc = p.res ? p.spend / p.res : null;
@@ -177,4 +178,28 @@ function metaStrip() {
   return '<div class="panel glance2"><div class="ph"><div><h2>Both platforms at a glance</h2><p class="sub">Total invested in ads: <b>' + money(tot) + '</b> · ' + pdelta(tot, ptot, 0) + '</p></div><button class="obtn2" data-go="platforms">Compare Google and Meta</button></div>' +
     '<div class="two">' + cell('google', G, gl, googleGoal()) + cell('meta', M, ml, metaGoal()) + '</div>' +
     '<p class="gfoot">Results are shown per platform, never added together, because Google and Meta each count results their own way. <b>Everything below this box is Google Ads.</b></p></div>';
+}
+
+/* ---------- Meta wins and insights (used by the Insights page and Overview) ---------- */
+function metaInsights() {
+  var M = metaAgg(), c = M.cur, p = M.pri, L = metaLabel(), U = sing(L), UP = L.toLowerCase(), goal = metaGoal();
+  var wins = [], ins = [], notes = [], has = p.spend > 0;
+  var cost = c.res ? c.spend / c.res : null, pcost = p.res ? p.spend / p.res : null;
+  if (has && p.res && c.res && (c.res - p.res) / p.res >= 0.05) wins.push({ p: 1, title: 'Meta: ' + int(c.res) + ' ' + UP + ', up ' + Math.round((c.res - p.res) / p.res * 100) + '%', body: (Math.round(c.res) - Math.round(p.res)) + ' more than the previous ' + N + ' days on Facebook and Instagram, on ' + money(c.spend) + ' of spend.' });
+  if (has && cost != null && pcost != null && (cost - pcost) / pcost <= -0.05) wins.push({ p: 2, title: 'Meta: cost per ' + U + ' fell to ' + money2(cost), body: 'Down ' + Math.round((pcost - cost) / pcost * 100) + '% from ' + money2(pcost) + ', so each Meta result costs less.' });
+  if (goal && cost != null && cost <= goal && c.res >= 3) wins.push({ p: 2, title: 'Meta: ' + UP + ' under the ' + money2(goal) + ' goal', body: int(c.res) + ' ' + UP + ' at ' + money2(cost) + ' each.' });
+  var ads = (MP.ads || []).filter(function (a) { return a.results >= 3; }).sort(function (a, b) { return a.spend / a.results - b.spend / b.results; });
+  if (ads.length >= 2) wins.push({ p: 3, title: 'Meta: top ad "' + ads[0].name + '"', body: int(ads[0].results) + ' ' + UP + ' at ' + money2(ads[0].spend / ads[0].results) + ' each, the best of any Meta ad.' });
+  if (!wins.length && c.res) wins.push({ p: 9, title: 'Meta: ' + int(c.res) + ' ' + UP + ' in this range', body: money(c.spend) + ' of spend' + (cost != null ? ', ' + money2(cost) + ' per ' + U : '') + '.' });
+  wins.sort(function (a, b) { return a.p - b.p; });
+  // insights
+  if (has && cost != null && pcost != null && (cost - pcost) / pcost >= 0.15) ins.push({ tone: 'bad', title: 'Results are getting more expensive', body: 'Cost per ' + U + ' on Meta rose from ' + money2(pcost) + ' to ' + money2(cost) + '. We are looking at which ads and audiences drove the rise.' });
+  if (goal && cost != null && cost > goal * 1.15) ins.push({ tone: 'bad', title: 'Above the cost goal', body: money2(cost) + ' per ' + U + ' against a goal of ' + money2(goal) + '. Bringing this down is a focus on Meta.' });
+  if (c.freq > 4) ins.push({ tone: 'warn', title: 'People have seen the ads often', body: 'People saw the ads about ' + c.freq.toFixed(1) + ' times each. Fresh creative usually brings costs back down at this point.' });
+  if (c.clicks && c.impr && p.impr && p.clicks) { var ct = c.clicks / c.impr, pct1 = p.clicks / p.impr; if ((ct - pct1) / pct1 >= 0.15) ins.push({ tone: 'good', title: 'More people are clicking the ads', body: 'Click rate went from ' + pct(pct1) + ' to ' + pct(ct) + '.' }); }
+  if (has && p.res >= 5 && (c.res - p.res) / p.res >= 0.1) ins.push({ tone: 'good', title: 'More ' + UP + ' coming in', body: int(c.res) + ' ' + UP + ' on Facebook and Instagram, up from ' + int(p.res) + (cost != null ? ', at ' + money2(cost) + ' each' : '') + '.' });
+  if (has && p.res >= 5 && (c.res - p.res) / p.res <= -0.15) ins.push({ tone: 'bad', title: 'Fewer ' + UP + ' this period', body: int(c.res) + ' ' + UP + ', down from ' + int(p.res) + ' in the previous ' + N + ' days. We are checking which ads and audiences slowed.' });
+  if (!ins.length && c.spend) ins.push({ tone: 'neutral', title: 'Steady results', body: money(c.spend) + ' on Facebook and Instagram brought ' + int(c.res) + ' ' + UP + (cost != null ? ' at ' + money2(cost) + ' each' : '') + '.' });
+  notes.push({ title: 'Google and Meta count results differently', body: 'Each platform counts results its own way, so their numbers are shown side by side and never added together.' });
+  return { wins: wins, insights: ins, notes: notes };
 }

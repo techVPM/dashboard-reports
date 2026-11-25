@@ -7,7 +7,8 @@ import { cacheKey, resolveRange } from '../lib/range.mjs';
 import { buildReport } from '../lib/ads.mjs';
 import { demoReport } from '../lib/demo.mjs';
 import { isCreative, jsonRes } from '../lib/auth.mjs';
-import { videoRows } from '../lib/videos.mjs';
+import { videoRows, accountRow } from '../lib/videos.mjs';
+import { reportable } from '../lib/platforms.mjs';
 import { scopePayload, resolveScope } from '../lib/team.mjs';
 
 export { videoRows };
@@ -17,7 +18,7 @@ export default async (req) => {
   const url = new URL(req.url);
   const days = PRE.includes(Number(url.searchParams.get('days'))) ? Number(url.searchParams.get('days')) : 30;
   const scope = url.searchParams.get('scope') || 'default';
-  const active = (await getClients()).filter((c) => c.token && c.customer_id && !c.disabled);
+  const active = (await getClients()).filter(reportable);
 
   // Custom dates: one client at a time (the page asks for each client in turn), fetched live if not saved.
   const token = url.searchParams.get('token');
@@ -34,23 +35,26 @@ export default async (req) => {
         hit = { saved_at: Date.now(), payload };
         await cachePut(key, hit);
       }
-      return jsonRes({ range: hit.payload.meta?.range || null, videos: videoRows(c, scopePayload(hit.payload, resolveScope(c, scope)).payload) });
+      const sp = scopePayload(hit.payload, resolveScope(c, scope)).payload;
+      return jsonRes({ range: hit.payload.meta?.range || null, videos: videoRows(c, sp), account: accountRow(c, sp, hit.payload) });
     } catch (e) {
       return jsonRes({ error: c.name + ': ' + e.message, videos: [] }, 502);
     }
   }
 
-  const missing = [], videos = [], ranges = [];
+  const missing = [], videos = [], ranges = [], accounts = [];
   await Promise.all(active.map(async (c) => {
     try {
       const hit = await savedReport(c, days);
       if (!hit) { missing.push(c.name); return; }
       if (hit.payload.meta?.range) ranges.push(hit.payload.meta.range);
-      videos.push(...videoRows(c, scopePayload(hit.payload, resolveScope(c, scope)).payload));
+      const sp = scopePayload(hit.payload, resolveScope(c, scope)).payload;
+      videos.push(...videoRows(c, sp));
+      accounts.push(accountRow(c, sp, hit.payload));
     } catch { missing.push(c.name); }
   }));
   videos.sort((a, b) => b.impressions - a.impressions);
-  return jsonRes({ days, range: ranges[0] || null, clients: active.map((c) => c.name).sort(), tokens: active.map((c) => ({ name: c.name, token: c.token })), missing: missing.sort(), videos });
+  return jsonRes({ days, range: ranges[0] || null, clients: active.map((c) => c.name).sort(), tokens: active.map((c) => ({ name: c.name, token: c.token })), missing: missing.sort(), videos, accounts: accounts.sort((a, b) => b.spend - a.spend) });
 };
 
 export const config = { path: '/api/creative' };

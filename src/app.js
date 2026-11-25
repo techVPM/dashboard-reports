@@ -14,7 +14,7 @@ function render() {
   var cc = S.view === 'campaign' ? camp(S.cid) : null, t = cc ? [cc.name, 'Campaign drill-down'] : VIEWS[S.view];
   document.getElementById('cli').textContent = META.client_name || 'Performance report';
   document.getElementById('ttl').textContent = t[0];
-  document.getElementById('sub').textContent = t[1];
+  document.getElementById('sub').textContent = t[1] + (metaOnlyRpt() && S.view !== 'journey' ? ' · Meta ads (Facebook and Instagram)' : '');
   var types = []; C.forEach(function (c) { if (types.indexOf(c.type) < 0) types.push(c.type); });
   var seg = document.getElementById('typeseg');
   if (types.length > 1) {
@@ -22,8 +22,9 @@ function render() {
     var opts = [['all', HASMIX ? 'All types' : 'All campaigns']].concat(types.map(function (x) { return [x, TYPE_LBL[x] || 'Other']; }));
     seg.innerHTML = opts.map(function (o) { return '<button data-type="' + o[0] + '" class="' + (S.type === o[0] ? 'on' : '') + '" aria-pressed="' + (S.type === o[0]) + '">' + o[1] + '</button>'; }).join('');
   } else { seg.hidden = true; S.type = 'all'; }
+  if ((S.view === 'creative' && S.cplat === 'meta' && MP && MP.daily) || (S.view === 'platforms' && S.plat === 'meta')) seg.hidden = true;   // campaign types are Google's
   var f = { overview: vOverview, weekly: vWeekly, campaigns: vCampaigns, creative: vCreative, insights: vInsights, campaign: vDetail, journey: vJourney, platforms: vPlatforms }[S.view];
-  var jv = S.view === 'journey'; document.getElementById('toolbar').hidden = jv || (S.view === 'platforms' && S.plat === 'meta'); document.querySelector('.datebox').hidden = jv;
+  var jv = S.view === 'journey'; document.getElementById('toolbar').hidden = jv; document.querySelector('.datebox').hidden = jv;
   charts = []; view.innerHTML = f(); paintCharts();
   if (S.view === 'weekly') { var A = agg(list()), Wk = weeks(A); weekChart(document.getElementById('ch-wk1'), Wk, 'bars'); weekChart(document.getElementById('ch-wk2'), Wk, 'line'); }
   try { history.replaceState(null, '', location.search + '#' + (S.view === 'campaign' ? 'c-' + S.cid : S.view)); } catch (e) { /* ignore */ }
@@ -58,7 +59,7 @@ function drawRangeBar() {
 }
 // Loading bar. Google does not report progress, so the bar moves on a timer and the
 // status line walks through what the server is doing. It jumps to full when the data arrives.
-var LSTEPS = [[0, 'Connecting to Google Ads'], [1.5, 'Gathering campaign results'], [5, 'Pulling videos, ads and searches'], [12, 'Adding up conversions and goals'], [22, 'Almost there. Big accounts take a little longer.']];
+var LSTEPS = [[0, 'Connecting to your ad accounts'], [1.5, 'Gathering campaign results'], [5, 'Pulling videos, ads and searches'], [12, 'Adding up conversions and goals'], [22, 'Almost there. Big accounts take a little longer.']];
 var ltimer = null, lstart = 0, lshow = null;
 function loaderOn() {
   clearInterval(ltimer); clearTimeout(lshow); lstart = Date.now();
@@ -98,9 +99,18 @@ var RAW = null, HASMIX = false;
 function isVpm(n) { return /vpm/i.test(String(n || '')); }
 function scoped(P) {
   var cs = P.campaigns || [], nv = cs.filter(function (c) { return isVpm(c.name); }).length;
-  HASMIX = nv > 0 && nv < cs.length;
+  var gMix = nv > 0 && nv < cs.length;
+  // Meta campaigns follow the same rule: "vpm" in the campaign name
+  var m = P.platforms && P.platforms.meta, mc = (m && m.campaigns) || [], mv = mc.filter(function (c) { return isVpm(c.name); }).length;
+  var mMix = !!(m && m.daily) && mv > 0 && mv < mc.length;
+  HASMIX = gMix || mMix;
   if (!S.scope) { var q = ''; try { q = new URLSearchParams(location.search).get('m') || ''; } catch (e) { /* ignore */ } S.scope = q === 'vpm' || q === 'other' || q === 'all' ? q : ((P.meta && P.meta.default_scope) || 'all'); }
   if (!HASMIX || S.scope === 'all') return P;
+  if (mMix) {
+    var mk = {}; mc.forEach(function (c) { if (isVpm(c.name) === (S.scope === 'vpm')) mk[c.id] = 1; });
+    P = Object.assign({}, P, { platforms: Object.assign({}, P.platforms, { meta: Object.assign({}, m, { campaigns: mc.filter(function (c) { return mk[c.id]; }), daily: m.daily.filter(function (d) { return mk[d.campaign_id]; }), ads: (m.ads || []).filter(function (a) { return mk[a.campaign_id]; }), reach: null, scoped: true }) }) });
+  }
+  if (!gMix) return P;
   var keep = {}; cs.forEach(function (c) { if (isVpm(c.name) === (S.scope === 'vpm')) keep[c.id] = 1; });
   var it = {}; Object.keys(P.items || {}).forEach(function (k) { it[k] = k === 'hours' ? [] : P.items[k].filter(function (r) { return keep[r.campaign_id]; }); });
   return Object.assign({}, P, { campaigns: cs.filter(function (c) { return keep[c.id]; }), daily: (P.daily || []).filter(function (d) { return keep[d.campaign_id]; }), items: it });
@@ -113,8 +123,9 @@ function drawScope() {
 }
 function apply(P) {
   RAW = P;
-  setPlatforms(P);
-  build(scoped(P)); buildMET(); loaded = true; drawScope();
+  var SP = scoped(P);
+  setPlatforms(SP);
+  build(SP); buildMET(); loaded = true; drawScope();
   var h = ''; try { h = location.hash.slice(1); } catch (e) { /* ignore */ }
   if (h === 'videos' || h === 'ads') h = 'creative';
   if (!S.fresh) { S.fresh = 1; if (VIEWS[h]) S.view = h; else if (h.indexOf('c-') === 0 && camp(h.slice(2))) { S.view = 'campaign'; S.cid = h.slice(2); } }
@@ -144,8 +155,9 @@ function load() {
 
 /* ---------- events ---------- */
 root.addEventListener('click', function (e) {
-  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-ai],[data-lp],[data-page],[data-close],[data-burger],[data-scope],[data-ps],[data-jrep],[data-jall],[data-plat]'); if (!t || !root.contains(t)) return;
+  var t = e.target.closest('[data-go],[data-camp],[data-met],[data-type],[data-sort],[data-range],[data-vi],[data-ai],[data-lp],[data-page],[data-close],[data-burger],[data-scope],[data-ps],[data-jrep],[data-jall],[data-plat],[data-cplat]'); if (!t || !root.contains(t)) return;
   if (t.dataset.plat) { S.plat = t.dataset.plat; return render(); }
+  if (t.dataset.cplat) { S.cplat = t.dataset.cplat; S.page = {}; return render(); }
   if (t.dataset.jrep) return openJReport(t.dataset.jrep);
   if (t.dataset.jall) { S.jall = !S.jall; var yy = window.scrollY; render(); window.scrollTo(0, yy); return; }
   if (t.tagName === 'A') e.preventDefault();

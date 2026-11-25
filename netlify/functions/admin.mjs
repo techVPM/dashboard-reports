@@ -58,10 +58,15 @@ export function validate(c, list, original) {
   c.name = String(c.name || '').trim();
   c.customer_id = String(c.customer_id || '').trim();
   const d = c.customer_id.replace(/\D/g, '');
+  // which ad platforms this client runs: Google only, Meta only, or both
+  c.platforms = ['google', 'meta', 'both'].includes(c.platforms) ? c.platforms : 'google';
+  const md = String(c.meta_ad_account || '').replace(/^act_/i, '').replace(/\D/g, '');
   if (!c.name) errs.push('Add the client name.');
-  if (d.length !== 10) errs.push('The Google Ads ID must have 10 digits, like 123-456-7890.');
+  if (c.platforms === 'meta' && !d) delete c.customer_id;
+  else if (d.length !== 10) errs.push('The Google Ads ID must have 10 digits, like 123-456-7890.');
   else c.customer_id = d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6);
-  c.token = String(c.token || '').trim().toLowerCase() || makeToken(c.name, d);
+  if (c.platforms !== 'google' && !md) errs.push(c.platforms === 'meta' ? 'Add the Meta ad account ID for a Meta only client.' : 'Add the Meta ad account ID, or set Ad platforms to Google Ads only.');
+  c.token = String(c.token || '').trim().toLowerCase() || makeToken(c.name, c.platforms === 'meta' && !d ? md : d);
   if (!TOKEN.test(c.token) || c.token.length < 4) errs.push('The link key can only use lowercase letters, numbers and dashes.');
   if (RESERVED.includes(c.token)) errs.push('That link key is reserved. Pick another.');
   if (list.some((x) => x.token === c.token && x.token !== original)) errs.push('Another client already uses the link key ' + c.token + '.');
@@ -83,6 +88,8 @@ export function validate(c, list, original) {
     if (String(mg.label || '').trim()) out.label = String(mg.label).trim().slice(0, 40);
     const cpr = Number(String(mg.cost_per_result ?? '').replace(/[$,\s]/g, ''));
     if (mg.cost_per_result != null && String(mg.cost_per_result).trim() !== '') { if (cpr > 0) out.cost_per_result = Math.round(cpr * 100) / 100; else errs.push('The Meta cost per result goal should be a number like 40.'); }
+    const mb = Number(String(mg.monthly_spend ?? '').replace(/[$,\s]/g, ''));
+    if (mg.monthly_spend != null && String(mg.monthly_spend).trim() !== '') { if (mb > 0) out.monthly_spend = Math.round(mb); else errs.push('The Meta budget should be a number like 3000.'); }
     if (Object.keys(out).length) c.meta_goals = out; else delete c.meta_goals;
   } else delete c.meta_goals;
   if (c.drive_url && !/^https:\/\/[^\s]+$/.test(c.drive_url)) errs.push('The Drive folder link should start with https://');

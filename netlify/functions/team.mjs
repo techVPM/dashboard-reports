@@ -1,6 +1,7 @@
 // GET /api/team?days=30                          (header x-admin-key) one row per active client, from saved reports
 // GET /api/team?token=<key>&from=YYYY-MM-DD&to=YYYY-MM-DD   one client for any range, fetched live if needed
 // GET /api/team?token=<key>&days=7                one client for a preset, fetched live if not saved yet
+import { reportable } from '../lib/platforms.mjs';
 import { getClients, cacheGet, cachePut, latestKey } from '../lib/store.mjs';
 import { cacheKey, resolveRange } from '../lib/range.mjs';
 import { buildReport } from '../lib/ads.mjs';
@@ -51,7 +52,7 @@ export default async (req) => {
     }
   }
 
-  const active = all.filter((c) => c.token && c.customer_id && !c.disabled);
+  const active = all.filter(reportable);
   const rows = await Promise.all(active.map(async (c) => {
     try {
       const hit = PRE.includes(days) ? await saved(c, days) : null;

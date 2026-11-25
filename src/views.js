@@ -8,7 +8,7 @@ var VIEWS = {
   insights: ['Insights', 'Wins, what the numbers mean, and our next step']
 };
 var JOURNEY_VIEW = ['Our journey', 'Where we started, what we have achieved, and what comes next'];
-var TYPE_LBL = { video: 'Video', search: 'Search', pmax: 'Performance Max', shopping: 'Shopping', display: 'Display', other: 'Other' };
+var TYPE_LBL = { video: 'Video', search: 'Search', pmax: 'Performance Max', shopping: 'Shopping', display: 'Display', meta: 'Meta', other: 'Other' };
 var ICON = {
   overview: '<rect x="3" y="3" width="6" height="6" rx="1"/><rect x="11" y="3" width="6" height="4" rx="1"/><rect x="3" y="11" width="6" height="4" rx="1"/><rect x="11" y="9" width="6" height="6" rx="1"/>',
   weekly: '<rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2.5v3M13 2.5v3"/>',
@@ -48,7 +48,7 @@ function KPS2() {
     { k: 'ctr', l: 'CTR', v: ctrO, f: pct, g: 1 },
     { k: 'cpclk', l: 'Avg. CPC', v: cpclkO, f: money2, g: -1 }
   ];
-  if (!unmapped()) rows.push({ k: 'conv', l: 'Conversions (Google)', v: function (o) { return o.conv; }, f: int, g: 1 }, { k: 'cpv', l: 'Cost per conversion', v: cpvO, f: money2, g: -1 });
+  if (!unmapped() && !metaOnlyRpt()) rows.push({ k: 'conv', l: 'Conversions (Google)', v: function (o) { return o.conv; }, f: int, g: 1 }, { k: 'cpv', l: 'Cost per conversion', v: cpvO, f: money2, g: -1 });
   rows.push({ k: 'cvr', l: 'Conversion rate', v: cvrO, f: pct, g: 1 });
   return rows;
 }
@@ -174,7 +174,7 @@ function vidTable(rows, showCamp) {
 function adTable(rows, showCamp) {
   var cols = [{ k: 'name', l: 'Ad', nm: 1, v: function (r) { return r.h1; }, f: function (r) {
     var inner = '<b>' + esc(r.h1) + '</b><small>' + esc(r.h2) + '</small>';
-    return r.url && /^https?:\/\//i.test(r.url) ? '<button type="button" class="ad adbtn" data-ai="' + r.i + '" aria-label="View landing page for ad: ' + esc(r.h1) + '">' + inner + '<em>View landing page</em></button>' : '<div class="ad">' + inner + '</div>';
+    return r.url && /^https?:\/\//i.test(r.url) ? '<button type="button" class="crt lnkbtn" data-ai="' + r.i + '" aria-label="View landing page for ad: ' + esc(r.h1) + '">' + inner + '<em>View landing page</em></button>' : '<div class="crt">' + inner + '</div>';
   } }];
   if (showCamp) cols.push({ k: 'camp', l: 'Campaign', v: function (r) { return r.camp; }, f: function (r) { return esc(r.camp); } });
   return tbl('ads', cols.concat(outCols(), trafficCols(), verdictCol('item', thrItem())), rows, null, AD_PAGE);
@@ -182,7 +182,7 @@ function adTable(rows, showCamp) {
 function lpTable(id, rows) {
   if (!S.sort[id]) S.sort[id] = ['spend', -1];
   var cols = [{ k: 'name', l: 'Landing page', nm: 1, v: function (r) { return r.name; }, f: function (r) {
-    return r.url && /^https?:\/\//i.test(r.url) ? '<button type="button" class="ad adbtn" data-lp="' + esc(r.url) + '" aria-label="View landing page: ' + esc(r.name) + '"><b>' + esc(r.name) + '</b><em>View landing page</em></button>' : '<b>' + esc(r.name) + '</b>';
+    return r.url && /^https?:\/\//i.test(r.url) ? '<button type="button" class="crt lnkbtn" data-lp="' + esc(r.url) + '" aria-label="View landing page: ' + esc(r.name) + '"><b>' + esc(r.name) + '</b><em>View landing page</em></button>' : '<b>' + esc(r.name) + '</b>';
   } }].concat(outCols(), trafficCols());
   return tbl(id, cols, rows);
 }
@@ -256,7 +256,10 @@ function goalsPanel(A) {
     var pv = (cur[RK] || 0) * sc, gm = G.monthly_conversions, km = pv >= gm ? 'good' : pv >= gm * .85 ? 'warn' : 'bad';
     cards.push(card(esc(rlab()) + ' per 30 days', int(pv), int(gm) + ' a month', km, km === 'good' ? 'On pace' : km === 'warn' ? 'Close' : 'Behind pace', int(cur[RK] || 0) + ' in this range' + per));
   }
-  if (G.monthly_spend) spendCard('Spend per 30 days', cur.spend * sc, G.monthly_spend, cur.spend);
+  var mOn = MP && MP.daily && !metaOnlyRpt(), mS = mOn ? metaAgg().cur.spend : 0;
+  if (G.total_budget) { var gAll = agg(C).cur.spend; spendCard(mOn ? 'All ad spend per 30 days (Google and Meta)' : 'Ad spend per 30 days', (gAll + mS) * sc, G.total_budget, gAll + mS); }
+  if (G.monthly_spend) spendCard(mOn ? 'Google spend per 30 days' : 'Spend per 30 days', cur.spend * sc, G.monthly_spend, cur.spend);
+  if (mOn && MP.goal && MP.goal.monthly_spend) spendCard('Meta spend per 30 days', mS * sc, MP.goal.monthly_spend, mS);
   (G.spend_by_type || []).forEach(function (t) {
     var raw = 0; list().forEach(function (cp) { if (t.types.indexOf(cp.type) > -1) raw += cp.cur.spend; });
     if (S.type !== 'all' && t.types.indexOf(S.type) < 0) return;
@@ -376,7 +379,9 @@ function vCampaigns() {
   if (HAS.rev) sub += ' · colors compare each metric to your targets: ROAS ' + T.roas + 'x';
   else if (target()) sub += ' · colors compare cost per ' + sing(rlab()) + ' with ' + ((RK === 'calls' ? T.cpc : T.cpl) ? 'your ' + money(target()) + ' target' : 'the account average of ' + money(target()));
   sub = '<b class="clickhint">Click any campaign to see its ads, videos and audiences.</b> ' + sub;
-  return panel('All campaigns', sub, list().length ? campTable(list()) : '<p class="msg">No campaigns in this view.</p>');
+  var mOn = MP && MP.daily && !metaOnlyRpt();
+  return panel(mOn ? 'Google Ads campaigns' : metaOnlyRpt() ? 'Meta campaigns' : 'All campaigns', sub, list().length ? campTable(list()) : '<p class="msg">No campaigns in this view.</p>') +
+    (mOn ? panel('Meta campaigns', 'Facebook and Instagram, selected range. Results as Meta counts them: ' + esc(metaLabel().toLowerCase()) + '.', metaCampTable(metaAgg())) : '');
 }
 function bars(data) {
   var d = data.filter(function (x) { return x[RK] > 0; }).map(function (x) { return [x.name, x.spend / x[RK]]; }).sort(function (a, b) { return a[1] - b[1]; });
@@ -398,9 +403,16 @@ function vAudiences() {
   return out;
 }
 function vCreative() {
+  var metaSub = function () { return 'Facebook and Instagram, top ads by spend.' + ((MP.ads || []).some(function (a) { return a.post; }) ? ' Click an ad to see the post.' : ''); };
+  if (metaOnlyRpt()) return panel('Meta ads', MP && MP.daily ? metaSub() : '', MP && MP.daily ? metaAds() : '<p class="msg">No Meta ads in this range yet.</p>');
+  var both = !!(MP && MP.daily), cp = both ? (S.cplat || 'both') : 'google';
+  var sw = both ? '<div class="pswitch"><span>Show</span><div class="seg">' + [['both', 'Google and Meta'], ['google', 'Google ads'], ['meta', 'Meta ads']].map(function (o) { return '<button data-cplat="' + o[0] + '" class="' + (cp === o[0] ? 'on' : '') + '" aria-pressed="' + (cp === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>' : '';
+  if (cp === 'meta') return sw + panel('Meta ads', metaSub(), metaAds());
   var rows = items('videos'), ads = items('ads'), kw = items('keywords'), tm = items('terms'), out = '';
   if (rows.length) out += panel('Videos', 'Click a video to watch it', vidTable(rows, true));
-  out += panel('Ads', 'Click an ad to see the page it leads to', ads.length ? adTable(ads, true) : '<p class="msg">No ads in this view.</p>');
+  var mOn = cp === 'both';
+  out += panel(both ? 'Google ads' : 'Ads', 'Click an ad to see the page it leads to', ads.length ? adTable(ads, true) : '<p class="msg">No ads in this view.</p>');
+  if (mOn) out += panel('Meta ads', metaSub(), metaAds());
   if (!rows.length && list().some(function (c) { return c.type === 'video'; })) out += '<p class="msg small">Per-video results will show here once Google reports them for this range.</p>';
   // Summaries first (themes, landing pages), then the long lists, 15 rows at a time.
   if (tm.length && TERMG.length) {
@@ -412,11 +424,11 @@ function vCreative() {
   }
   var lp = groupBy('landing', ids());
   if (lp.length) {
-    out += panel('Landing pages', 'Where clicks land. Click one to see it.', lpTable('landing', lp));
+    out += panel(both ? 'Google landing pages' : 'Landing pages', 'Where clicks land. Click one to see it.', lpTable('landing', lp));
   }
   if (S.team && kw.length) out += panel('Keywords <span class="pill early">Team view</span>', 'Top keywords by spend', termTable('keywords', 'Keyword', kw));
   if (S.team && tm.length) out += panel('Search terms <span class="pill early">Team view</span>', 'The searches that triggered your ads, highest spend first. Google hides low-volume terms, so this is only part of Search spend.', termTable('terms', 'Search term', tm));
-  return out;
+  return sw + out;
 }
 var GROUPS = [
   ['perf', 'Performance and trends', 'How results are moving'],

@@ -101,7 +101,7 @@ export async function history(client, st, { env = process.env, fetchFn = fetch, 
     days: [...days.values()].sort((a, b) => (a.date < b.date ? -1 : 1)),
     campaigns: (r.campaigns || []).map((c) => ({ id: c.id, name: c.name, type: c.type })),
     by_campaign: byCampaign(r.daily || [], rk),
-    meta_days: metaDays(r),
+    meta_only: r.meta?.platform === 'meta', meta_days: r.meta?.platform === 'meta' ? null : metaDays(r), meta_goal: Number(client.meta_goals?.cost_per_result) || null,
   };
   await cachePut(hk, out).catch(() => {});
   return out;
@@ -212,13 +212,42 @@ export function findWins(h, st) {
   if (base && base.kind === 'before' && now.days >= 21 && now.results > base.results * 1.2 && now.results >= 3) {
     add('vs_before_volume', h.to, (base.results ? Math.round((now.results / Math.max(1, base.results) - 1) * 100) + '% more ' : now.results + ' ') + UL + ' than before we started', base.results + ' in the 30 days before kickoff, ' + now.results + ' in the last 30 days.', 97);
   }
+  for (const w of metaWins(h, st)) wins.push(w);
   return wins.sort((a, b) => (a.date < b.date ? -1 : 1));
+}
+
+// Wins on Meta (Facebook and Instagram), from Meta's own numbers. Never mixed with Google's.
+export function metaWins(h, st) {
+  const md = h && h.meta_days; if (!md || !md.days.length) return [];
+  const start = st.kickoff || st.launch || ''; if (!start) return [];
+  const label = md.label || 'Results', UL = label.toLowerCase(), US = sing(label).toLowerCase();
+  const win = (from, to) => { const o = { days: 0, spend: 0, results: 0 }; for (const d of md.days) if (d.date >= from && d.date <= to) { o.days++; o.spend += d.spend; o.results += d.results; } o.cost = o.results > 0 ? o.spend / o.results : null; return o; };
+  const ranBefore = md.days.some((d) => d.date < start && d.spend > 0);
+  const firstSpend = md.days.find((d) => d.date >= start && d.spend > 0); if (!firstSpend) return [];
+  const M0 = firstSpend.date, days = md.days.filter((d) => d.date >= M0), out = [];
+  const add = (id, date, title, detail, score) => out.push({ id, date, title, detail, score, auto: true, kind: 'win', platform: 'meta' });
+  let total = 0, spend = 0; const marks = [10, 25, 50, 100, 250, 500, 1000, 2500];
+  for (const d of days) {
+    const before = total; total += d.results; spend += d.spend;
+    if (!ranBefore && before < 1 && total >= 1) add('meta_first_result', d.date, 'First ' + US + ' from Meta ads', 'Facebook and Instagram, ' + daysBetween(M0, d.date) + ' days after the Meta ads started.', 88);
+    for (const m of marks) if (before < m && total >= m) { for (let i = out.length - 1; i >= 0; i--) if (/^meta_total_/.test(out[i].id)) out.splice(i, 1); add('meta_total_' + m, d.date, m.toLocaleString('en-US') + ' ' + UL + ' from Meta ads', money(spend) + ' invested on Facebook and Instagram, ' + money2(spend / total) + ' each.', 40 + Math.min(38, Math.log10(m) * 12)); }
+  }
+  const goal = h.meta_goal;
+  if (goal) for (const d of days) { const w = win(addDays(d.date, -29) < M0 ? M0 : addDays(d.date, -29), d.date); if (w.days >= 7 && w.results >= 3 && w.cost != null && w.cost <= goal) { add('meta_under_goal', d.date, 'Meta cost per ' + US + ' under the ' + money2(goal) + ' goal', money2(w.cost) + ' each over the ' + w.days + ' days to ' + fmtDate(d.date) + ' (' + w.results + ' ' + UL + ').', 96); break; } }
+  const weeks = []; for (let s = M0; addDays(s, 6) <= h.to; s = addDays(s, 7)) weeks.push({ from: s, to: addDays(s, 6), ...win(s, addDays(s, 6)) });
+  if (weeks.length >= 3) { const most = weeks.reduce((a, b) => (b.results > a.results ? b : a)); if (most.results >= 3) add('meta_record_week', most.to, 'Record week on Meta: ' + Math.round(most.results) + ' ' + UL, 'The week of ' + fmtDate(most.from) + ', the most since the Meta ads started.', 68); }
+  if (ranBefore) {
+    const base = win(addDays(start, -30), addDays(start, -1)), now = win(addDays(h.to, -29), h.to);
+    if (base.cost && now.cost && now.results >= 3 && (now.cost - base.cost) / base.cost <= -0.1) add('meta_vs_before_cost', h.to, 'Meta cost per ' + US + ' down ' + Math.round((base.cost - now.cost) / base.cost * 100) + '% from before we started', money2(base.cost) + ' in the 30 days before kickoff, ' + money2(now.cost) + ' in the last 30 days.', 97);
+    if (now.results >= 3 && now.results > base.results * 1.2) add('meta_vs_before_volume', h.to, (base.results ? Math.round((now.results / Math.max(1, base.results) - 1) * 100) + '% more ' : Math.round(now.results) + ' ') + UL + ' on Meta than before we started', Math.round(base.results) + ' in the 30 days before kickoff, ' + Math.round(now.results) + ' in the last 30 days.', 95);
+  }
+  return out;
 }
 
 /* ---------- what the automatic milestones fill in ---------- */
 export function autoDates(h, st, wins) {
   const out = {};
-  const L = launchDate(h, st); if (L) out.launch = L;
+  const L = launchDate(h, st); if (L) { out.launch = L; if (h && h.meta_only) out.meta = L; }
   const fr = wins.find((w) => w.id === 'first_result'); if (fr) out.first_result = fr.date;
   const g = wins.find((w) => w.id === 'under_goal'); if (g) out.goal = g.date;
   const mg = wins.find((w) => w.id === 'monthly_goal'); if (mg) out.monthly = mg.date;
@@ -237,7 +266,7 @@ export function view(client, st, h, { team = false } = {}) {
   const notesFor = (id) => st.notes.filter((n) => (n.item || null) === id && (team || n.public)).map((n) => ({ id: n.id, text: n.text, public: !!n.public, at: n.at }));
   const items = TEMPLATE.map((t) => {
     const s = st.items[t.id] || {};
-    const autoDate = t.auto ? auto[t.auto] || null : null;
+    const autoDate = t.auto && !(h && h.meta_only && t.id === 'google_live') ? auto[t.auto] || null : null;
     const done = s.done != null ? !!s.done : !!autoDate;
     return { id: t.id, phase: t.phase, title: s.title || t.title, why: s.why != null ? s.why : t.why, removed: !!s.removed, client: s.client != null ? !!s.client : t.client, done, date: s.date || (done ? autoDate : '') || '', auto: t.auto, auto_date: autoDate, due: s.due || '', notes: notesFor(t.id), custom: false };
   }).concat(st.custom.map((c) => ({ id: c.id, phase: c.phase, title: c.title, client: !!c.client, done: !!c.done, date: c.date || '', due: c.due || '', win: !!c.win, detail: c.detail || '', notes: notesFor(c.id), custom: true })));
@@ -350,7 +379,8 @@ export async function makeReport({ client, st, days, env = process.env, fetchFn 
     value: vNow ? { now: vNow, before: vPrev } : null,
   };
   // Meta, counted by Meta and kept separate from Google's results
-  const md = metaDays(both);
+  if (both.meta?.platform === 'meta') numbers.platform = 'meta';
+  const md = both.meta?.platform === 'meta' ? null : metaDays(both);
   if (md && md.days.some((d) => d.spend > 0)) numbers.meta = { label: md.label, before: metaWindow(md, W.prev[0], W.prev[1]), now: metaWindow(md, W.now[0], W.now[1]) };
   const facts = { numbers, wins: wins.map((w) => ({ date: w.date, title: w.title, detail: w.detail })), milestones_this_period: done, notes: st.notes.filter((n) => n.public).map((n) => n.text).slice(-10), detail };
   let text = null, by = 'rules', ai_error = null;
@@ -368,6 +398,7 @@ Voice: VPM is the guide, the client is the hero. Write like a trusted partner ta
 Never use these words: game-changer, revolutionary, disruptive, synergy, leverage, bandwidth, circle back, amazing, incredible, unbelievable, epic, "we believe", "we feel", comprehensive, holistic, end-to-end, basically, actually, very, just, simply, world-class, best-in-class, cutting-edge. No hype, no exclamation marks, no em dashes or en dashes (use commas or periods).
 Be honest: celebrate real wins with numbers, name gaps plainly and say what we will do about them. Never invent or estimate numbers; use only the facts given.
 
+If numbers.platform is "meta", this client only runs Meta (Facebook and Instagram) ads: every number is from Meta, so talk about Meta and do not mention Google or YouTube.
 If numbers.meta is present, those are Meta (Facebook and Instagram) results as Meta counts them. Talk about them separately and never add them to the Google numbers, because each platform counts results its own way.
 
 The comparison: "now" is the latest ${'${period}'}-day period, "before" is the ${'${period}'} days just before it. Say that plainly (for example "the last 30 days compared with the 30 days before"). If "value" is present it is ${'${valueKind}'}.

@@ -23,7 +23,7 @@ export default async (req, context) => {
   const url = new URL(req.url);
   const token = url.searchParams.get('k') || '';
 
-  if (token === 'demo' || token === 'demo-calls') {
+  if (token === 'demo' || token === 'demo-calls' || token === 'demo-meta') {
     const r = resolveRange(url.searchParams, 'America/Denver');
     if (r.error) return json({ error: r.error }, 400);
     return json(demoReport(token, r.from, r.to));

@@ -59,3 +59,41 @@ export function videoRows(client, payload) {
   });
 }
 
+
+// One row per client account for the Creative Hub overview: the whole Google account in the range,
+// its videos, and Meta on its own line (Meta results are counted by Meta and never added to Google's).
+export function accountRow(client, payload, rawPayload) {
+  const meta = payload.meta || {}, has = meta.has || {}, range = meta.range || {};
+  const rk = has.calls ? 'calls' : has.leads ? 'leads' : has.deals ? 'deals' : 'conversions';
+  const label = rk === 'conversions' ? 'Conversions' : (meta.labels?.[rk] || 'Results');
+  const pfrom = meta.previous?.from || '';
+  const z = () => ({ spend: 0, impressions: 0, clicks: 0, results: 0, views: 0 });
+  const cur = z(), prev = z();
+  for (const d of payload.daily || []) {
+    const o = range.from && d.date >= range.from ? cur : d.date >= pfrom ? prev : null; if (!o) continue;
+    o.spend += d.spend || 0; o.impressions += d.impressions || 0; o.clicks += d.clicks || 0; o.results += d[rk] || 0; o.views += d.views || 0;
+  }
+  const vids = videoRows(client, payload);
+  const vSpend = vids.reduce((a, v) => a + v.spend, 0);
+  const top = vids.filter((v) => v.results >= 2 && v.cpa != null).sort((a, b) => a.cpa - b.cpa)[0] || vids.slice().sort((a, b) => b.impressions - a.impressions)[0] || null;
+  const goal = applyGoals(client).goals.cost_per_conversion || null;
+  let m = null; const mp = (rawPayload || payload).platforms?.meta;
+  const onlyMeta = meta.platform === 'meta';
+  if (mp && mp.daily && !onlyMeta) {
+    const mc = { spend: 0, results: 0, clicks: 0, impressions: 0 }, mpv = { spend: 0, results: 0 };
+    for (const d of mp.daily) { if (d.date >= range.from && d.date <= range.to) { mc.spend += d.spend; mc.results += d.results; mc.clicks += d.clicks; mc.impressions += d.impressions; } else if (d.date >= pfrom && d.date < range.from) { mpv.spend += d.spend; mpv.results += d.results; } }
+    m = { label: mp.label || 'Results', spend: r2(mc.spend), results: r2(mc.results), cpa: mc.results ? r2(mc.spend / mc.results) : null, prev_cpa: mpv.results ? r2(mpv.spend / mpv.results) : null, ctr: mc.impressions ? r4(mc.clicks / mc.impressions) : null, ads: (mp.ads || []).filter((a) => a.spend > 0).length, goal: mp.goal?.cost_per_result || null };
+  }
+  return {
+    client: client.name, client_token: client.token, result_label: label, goal_cpa: onlyMeta ? (meta.goals?.cost_per_conversion || null) : goal,
+    platform: onlyMeta ? 'meta' : m ? 'both' : 'google', meta_ads: onlyMeta && mp ? (mp.ads || []).filter((a) => a.spend > 0).length : null,
+    spend: r2(cur.spend), impressions: cur.impressions, clicks: cur.clicks, results: r2(cur.results),
+    ctr: cur.impressions ? r4(cur.clicks / cur.impressions) : null, cpa: cur.results ? r2(cur.spend / cur.results) : null,
+    prev_cpa: prev.results ? r2(prev.spend / prev.results) : null, prev_results: r2(prev.results),
+    view_rate: cur.impressions && cur.views ? r4(cur.views / cur.impressions) : null,
+    videos: vids.length, running: vids.filter((v) => v.running).length, new_videos: vids.filter((v) => v.is_new).length,
+    video_spend: r2(vSpend), video_share: cur.spend ? r4(Math.min(1, vSpend / cur.spend)) : null,
+    top_video: top ? { title: top.title, video_id: top.video_id, cpa: top.cpa, ctr: top.ctr, key: top.client_token + '|' + (top.video_id || top.title) } : null,
+    meta: m,
+  };
+}

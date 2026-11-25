@@ -202,6 +202,7 @@ function computeInsights() {
   }
   if (wasted.length) acts.push({ priority: 'Medium', title: 'Add negative keywords for terms with no results', body: 'Start with ' + listNames(wasted, function (t) { return '"' + t.name + '"'; }, 5) + '. Together the top terms with no ' + UP + ' cost ' + money(sum(wasted.slice(0, 5).map(function (t) { return t.spend; }))) + '. Review them before adding, since some may be broad but still worth keeping.' });
   var G = META.goals || {};
+  if (G.total_budget && N >= 7) { var allS = cur.spend + (typeof MP !== 'undefined' && MP && MP.daily ? metaAgg().cur.spend : 0); if (allS * 30 / N > G.total_budget * 1.1) acts.push({ priority: 'High', title: 'Bring ad spend back to the ' + money(G.total_budget) + ' monthly budget', body: 'Google and Meta together are running at about ' + money(allS * 30 / N) + ' per 30 days. We will trim daily budgets on the weakest campaigns first.' }); }
   if (G.monthly_spend && N >= 7 && cur.spend * 30 / N > G.monthly_spend * 1.1) acts.push({ priority: 'High', title: 'Bring spend back to the ' + money(G.monthly_spend) + ' monthly budget', body: 'Spend is running at about ' + money(cur.spend * 30 / N) + ' per 30 days. Trim daily budgets on the weakest campaigns first.' });
   var po = { High: 0, Medium: 1, Low: 2 };
   acts.forEach(function (a, i) { a._i = i; });
@@ -212,12 +213,21 @@ function computeInsights() {
   var tzToday = ''; try { tzToday = new Date().toLocaleDateString('en-CA', { timeZone: META.timezone || 'America/Denver' }); } catch (e) { /* ignore */ }
   if (tzToday && META.range && META.range.to >= tzToday) notes.push({ title: 'Today is still in progress', body: 'This range includes today, so the last day is partial and will keep filling in.' });
   if (W.length && W[W.length - 1].partial && !(META.range.to >= tzToday)) notes.push({ title: 'The last week is partial', body: 'The final week in the weekly table has fewer than seven days, so compare it with care.' });
-  notes.push({ title: 'Small delays in the newest numbers', body: 'Google Ads can adjust the last day or two as clicks and conversions finish processing. Older days do not change much.' });
+  notes.push({ title: 'Small delays in the newest numbers', body: (metaOnlyRpt() ? 'Meta' : 'Google Ads') + ' can adjust the last day or two as clicks and conversions finish processing. Older days do not change much.' });
   if (!HAS.rev) notes.push({ title: 'Revenue is not connected', body: 'Results are counted in ' + UP + ', so ROAS is not shown. Importing closed sales and their value from your CRM adds revenue and return to this report.' });
   if (META.warnings && META.warnings.length) notes.push({ title: 'Some detail could not be loaded', body: 'Parts of the account could not be loaded just now (' + META.warnings.map(function (w) { return String(w).split(':')[0]; }).join(', ') + '). The rest of the report is complete. It will fill in on the next refresh.' });
   if (!C.some(function (c) { return c.type === 'video'; })) notes.push({ title: 'No video campaigns in this view', body: 'Video and YouTube results appear here when video or Demand Gen campaigns are running.' });
 
-  return { insights: ins, actions: acts, notes: notes, team: META.notes || [], wins: findWins({ cur: cur, pri: pri, hasPri: hasPri, R: R, PR: PR, cpr: cpr, pcpr: pcpr, U: U, UP: UP, FW: FW, best: best, live: live }) };
+  var out = { insights: ins, actions: acts, notes: notes, team: META.notes || [], wins: findWins({ cur: cur, pri: pri, hasPri: hasPri, R: R, PR: PR, cpr: cpr, pcpr: pcpr, U: U, UP: UP, FW: FW, best: best, live: live }) };
+  // With Meta running, each platform gets its own wins and insights, labeled so nothing is mixed up
+  if (typeof metaInsights === 'function' && MP && MP.daily && !metaOnlyRpt()) {
+    var MI = metaInsights(), tag = function (x) { return Object.assign({}, x, { title: 'Google: ' + x.title }); };
+    out.wins = out.wins.slice(0, 2).map(tag).concat(MI.wins.slice(0, 2), out.wins.slice(2).map(tag));
+    var gi = out.insights.map(tag);
+    out.insights = gi.slice(0, 1).concat(MI.insights.slice(0, 1).map(function (x) { return Object.assign({}, x, { title: 'Meta: ' + x.title }); }), gi.slice(1), MI.insights.slice(1).map(function (x) { return Object.assign({}, x, { title: 'Meta: ' + x.title }); }));
+    if (MI.notes.length) out.notes = MI.notes.concat(out.notes);
+  }
+  return out;
 }
 
 /* ===== wins: up to three good things that happened in the selected range ===== */

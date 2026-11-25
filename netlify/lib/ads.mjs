@@ -4,6 +4,7 @@
 
 import { applyGoals } from './goals.mjs';
 import { buildMeta } from './meta.mjs';
+import { metaOnly } from './platforms.mjs';
 // Bump when the Google queries change, so saved reports built by older code are rebuilt.
 export const DATA_VERSION = '2.13';
 
@@ -380,8 +381,43 @@ async function settle(label, promise, warnings) {
   try { return await promise; } catch (e) { warnings.push(label + ': ' + e.message); return null; }
 }
 
+// A client who only runs Meta: the Meta numbers fill the whole report (in the same shape as Google's),
+// so Overview, Week by week, Campaigns, Insights, goals and the journey all work from Meta.
+async function metaOnlyReport({ client, goals, from, to, env, fetchFn, now }) {
+  const len = daysBetween(from, to) + 1, pfrom = addDays(from, -len), pto = addDays(from, -1);
+  if (!env.META_ACCESS_TOKEN) throw new AdsError('Meta is not connected yet. Add META_ACCESS_TOKEN in Netlify.', 500);
+  const m = await buildMeta({ client, from, to, env, fetchFn });
+  if (!m) throw new AdsError('Add the Meta ad account ID for this client.', 500);
+  return metaAsReport(m, client, goals, from, to, now);
+}
+export function metaAsReport(m, client, goals, from, to, now = new Date()) {
+  const len = daysBetween(from, to) + 1, pfrom = addDays(from, -len), pto = addDays(from, -1);
+  const g = { ...goals, cost_per_conversion: m.goal.cost_per_result || null, cpa_low: null, monthly_spend: m.goal.monthly_spend || null, spend_by_type: [], focus_conversions: m.focus_names || [], result_label: m.label, roas: goals.roas || null };
+  g.any = !!(g.cost_per_conversion || g.monthly_spend || g.total_budget || g.roas || g.monthly_conversions || g.weekly_conversions || g.note);
+  const revenue = m.daily.some((d) => d.revenue > 0);
+  return {
+    platforms: { meta: m },
+    meta: {
+      client_name: client.name, data_version: DATA_VERSION, refreshed_at: now.toISOString(), platform: 'meta',
+      range: { from, to, days: len }, previous: { from: pfrom, to: pto },
+      currency: client.currency || 'USD', timezone: client.timezone || 'America/Denver',
+      has: { leads: true, calls: false, deals: false, revenue },
+      labels: { leads: m.label, calls: 'Booked calls', deals: 'Sales' },
+      targets: { cpl: g.cost_per_conversion, cpc: null, roas: g.roas, breakeven: null },
+      goals: g, conversion_actions: [], include_paused: !!client.include_paused,
+      default_scope: client.default_scope === 'vpm' ? 'vpm' : 'all',
+      notes: client.notes || [], actions: client.actions || [], term_groups: {}, last_change_date: client.last_change_date || '',
+      warnings: [],
+    },
+    campaigns: m.campaigns.map((c) => ({ id: c.id, name: c.name, status: 'ENABLED', channel: 'META', type: 'meta' })),
+    daily: m.daily.map((d) => ({ date: d.date, campaign_id: d.campaign_id, spend: d.spend, impressions: d.impressions, clicks: d.clicks, views: d.thruplays || 0, conversions: d.results, leads: d.results, calls: 0, deals: 0, revenue: d.revenue || 0 })),
+    items: {},
+  };
+}
+
 export async function buildReport({ client: rawClient, from, to, env = process.env, fetchFn = fetch, now = new Date(), timeoutMs = 9000 }) {
   const { client, goals } = applyGoals(rawClient);
+  if (metaOnly(rawClient)) return metaOnlyReport({ client, goals, from, to, env, fetchFn, now });
   const customerId = digits(client.customer_id);
   const opts = { env, fetchFn, timeoutMs };
   const classifier = makeClassifier(client.outcomes);

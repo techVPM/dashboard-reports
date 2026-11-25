@@ -86,7 +86,7 @@ export async function listMetaConversions(account, { env = process.env, fetchFn 
 /* ---------- one report's worth of Meta data ---------- */
 export async function buildMeta({ client: c, from, to, env = process.env, fetchFn = fetch }) {
   const id = act(c.meta_ad_account);
-  if (!id || !metaConnected(env)) return null;
+  if (!id || !metaConnected(env) || c.platforms === 'google') return null;
   const M = client(env, fetchFn);
   const len = daysBetween(from, to) + 1, pfrom = addDays(from, -len), pto = addDays(from, -1);
   const tr = (a, b) => JSON.stringify({ since: a, until: b });
@@ -112,7 +112,7 @@ export async function buildMeta({ client: c, from, to, env = process.env, fetchF
   const ads = (adRows || []).slice(0, 60).map((r) => ({ id: r.ad_id, name: r.ad_name, campaign_id: r.campaign_id, ...rowsOf(r) }));
   if (ads.length) {
     try {
-      const det = await M.get('', { ids: ads.map((a) => a.id).join(','), fields: 'creative{thumbnail_url,image_url,title,body,object_type,video_id,effective_object_story_id}' });
+      const det = await M.get('', { ids: ads.map((a) => a.id).join(','), fields: 'creative{thumbnail_url,image_url,title,body,object_type,video_id,effective_object_story_id}', thumbnail_width: '480', thumbnail_height: '480' });
       for (const a of ads) {
         const cr = det?.[a.id]?.creative || {};
         a.thumb = cr.image_url || cr.thumbnail_url || ''; a.title = cr.title || ''; a.body = cr.body || ''; a.video = !!cr.video_id;
@@ -123,7 +123,7 @@ export async function buildMeta({ client: c, from, to, env = process.env, fetchF
   const t0 = (totNow && totNow[0]) || {}, t1 = (totPrev && totPrev[0]) || {};
   return {
     account: id, label, focus: [...focus], focus_names: [...focus].map((t) => actionName(t, cmap)),
-    goal: { cost_per_result: Number(mg.cost_per_result) || null },
+    goal: { cost_per_result: Number(mg.cost_per_result) || null, monthly_spend: Number(mg.monthly_spend) || null },
     reach: { now: num(t0.reach), prev: num(t1.reach), frequency: num(t0.frequency), prev_frequency: num(t1.frequency) },
     campaigns: [...campaigns.values()], daily: dailyRows, ads, picked: !!(mg.focus && mg.focus.length),
   };
@@ -133,7 +133,7 @@ export async function buildMeta({ client: c, from, to, env = process.env, fetchF
 export function demoMeta(from, to, seed = 7) {
   const len = daysBetween(from, to) + 1, pfrom = addDays(from, -len);
   let s = seed; const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
-  const camps = [{ id: 'm1', name: 'VPM | Leads | Video testimonials', objective: 'leads' }, { id: 'm2', name: 'VPM | Retargeting | Website visitors', objective: 'leads' }, { id: 'm3', name: 'VPM | Awareness | Founder story', objective: 'awareness' }];
+  const camps = [{ id: 'm1', name: 'VPM | Leads | Video testimonials', objective: 'leads' }, { id: 'm2', name: 'VPM | Retargeting | Website visitors', objective: 'leads' }, { id: 'm3', name: 'Awareness | Founder story (client run)', objective: 'awareness' }];
   const daily = [];
   for (let i = 0; i < len * 2; i++) {
     const date = addDays(pfrom, i), lift = i >= len ? 1.12 : 1;

@@ -1,6 +1,7 @@
 // Turns a saved 30-day report into one row of the team dashboard, judged against the client's goals.
 import { applyGoals, cleanGoals } from './goals.mjs';
 import { normName, digits, isVpm } from './ads.mjs';
+import { metaAdsLink, metaOnly } from './platforms.mjs';
 
 // Keep only VPM campaigns ("vpm" in the name), only the others, or everything.
 // scope 'default' uses the client's own setting.
@@ -8,11 +9,21 @@ export function resolveScope(client, scope) {
   if (scope === 'vpm' || scope === 'other' || scope === 'all') return scope;
   return client.default_scope === 'vpm' ? 'vpm' : 'all';
 }
+// Meta campaigns follow the same rule as Google's: "vpm" in the campaign name.
+export function scopeMeta(m, scope) {
+  if (!m || !m.daily || scope === 'all') return { m, mixed: false };
+  const cs = m.campaigns || [], nv = cs.filter((c) => isVpm(c.name)).length;
+  if (!(nv > 0 && nv < cs.length)) return { m, mixed: false };
+  const keep = new Set(cs.filter((c) => isVpm(c.name) === (scope === 'vpm')).map((c) => c.id));
+  return { m: { ...m, campaigns: cs.filter((c) => keep.has(c.id)), daily: m.daily.filter((d) => keep.has(d.campaign_id)), ads: (m.ads || []).filter((a) => keep.has(a.campaign_id)), reach: null, scoped: true }, mixed: true };
+}
 export function scopePayload(payload, scope) {
+  const sm = scopeMeta(payload.platforms?.meta, scope);
+  if (sm.mixed) payload = { ...payload, platforms: { ...payload.platforms, meta: sm.m } };
   const cs = payload.campaigns || [];
   const nv = cs.filter((c) => isVpm(c.name)).length;
-  const mixed = nv > 0 && nv < cs.length;
-  if (!mixed || scope === 'all') return { payload, mixed, vpmCount: nv };
+  const mixed = (nv > 0 && nv < cs.length) || sm.mixed;
+  if (!(nv > 0 && nv < cs.length) || scope === 'all') return { payload, mixed, vpmCount: nv };
   const keep = new Set(cs.filter((c) => isVpm(c.name) === (scope === 'vpm')).map((c) => c.id));
   const items = {};
   for (const [k, list] of Object.entries(payload.items || {})) items[k] = k === 'hours' ? [] : list.filter((r) => keep.has(r.campaign_id));
@@ -21,7 +32,7 @@ export function scopePayload(payload, scope) {
 
 const r2 = (v) => Math.round(v * 100) / 100;
 const RANK = { bad: 3, warn: 2, good: 1, none: 0, nogoals: 0, nodata: 0 };
-const TYPE_LBL = { video: 'Video', search: 'Search', pmax: 'Performance Max', shopping: 'Shopping', display: 'Display', other: 'Other' };
+const TYPE_LBL = { video: 'Video', search: 'Search', pmax: 'Performance Max', shopping: 'Shopping', display: 'Display', meta: 'Meta', other: 'Other' };
 
 export function adsLink(client) {
   if (client.ads_url && /^https:\/\//.test(client.ads_url)) return client.ads_url;
@@ -40,7 +51,7 @@ function grade(kind, actual, goal, extra) {
 export function summarize(client, rawPayload, savedAt, scopeIn = 'default') {
   const scope = resolveScope(client, scopeIn);
   const { payload, mixed } = scopePayload(rawPayload, scope);
-  const { goals } = applyGoals(client);
+  const goals = payload.meta?.platform === 'meta' ? { ...applyGoals(client).goals, ...payload.meta.goals } : applyGoals(client).goals;
   const meta = payload.meta || {};
   const from = meta.range?.from, days = meta.range?.days || 30, scale = 30 / days;
   const has = meta.has || {};
@@ -67,7 +78,19 @@ export function summarize(client, rawPayload, savedAt, scopeIn = 'default') {
     const g = goals.cost_per_conversion;
     checks.push({ key: 'cpa', label: 'Cost per ' + label.toLowerCase().replace(/s$/, ''), actual: cpa == null ? null : r2(cpa), goal: g, low: goals.cpa_low, unit: 'money2', status: cur.spend < 50 ? 'none' : grade('cost', cpa, g) });
   }
-  if (goals.monthly_spend) checks.push({ key: 'spend', label: 'Spend per 30 days', actual: r2(cur.spend * scale), goal: goals.monthly_spend, unit: 'money', status: grade('spend', cur.spend * scale, goals.monthly_spend) });
+  // Meta spend in the same range (kept apart from Google's results; only spend is ever added up)
+  const onlyMeta = meta.platform === 'meta', mp = onlyMeta ? null : payload.platforms?.meta, md = mp?.daily;
+  let metaSpend = 0; const mc = { spend: 0, res: 0, clicks: 0, impr: 0 }, mpv = { spend: 0, res: 0 };
+  if (md) for (const d of md) {
+    if (d.date >= from && d.date <= (meta.range?.to || '9999')) { metaSpend += Number(d.spend) || 0; mc.spend += d.spend || 0; mc.res += d.results || 0; mc.clicks += d.clicks || 0; mc.impr += d.impressions || 0; }
+    else if (d.date < from) { mpv.spend += d.spend || 0; mpv.res += d.results || 0; }
+  }
+  const mGoal = Number(client.meta_goals?.cost_per_result) || null, mCpa = mc.res ? mc.spend / mc.res : null;
+  const metaRow = md ? { label: mp.label || 'Results', spend: r2(mc.spend), results: r2(mc.res), cpa: mCpa == null ? null : r2(mCpa), prev: { spend: r2(mpv.spend), results: r2(mpv.res), cpa: mpv.res ? r2(mpv.spend / mpv.res) : null }, ctr: mc.impr ? Math.round(mc.clicks / mc.impr * 10000) / 10000 : null, goal: mGoal, status: !mGoal || mc.spend < 50 ? 'none' : grade('cost', mCpa, mGoal), frequency: mp.reach?.frequency || null, ads_url: metaAdsLink(client) } : (mp && mp.error ? { error: mp.error } : null);
+  if (mGoal && md) checks.push({ key: 'cpa-meta', label: 'Meta cost per ' + (mp.label || 'result').toLowerCase().replace(/s$/, ''), actual: mCpa == null ? null : r2(mCpa), goal: mGoal, unit: 'money2', status: metaRow.status });
+  if (goals.total_budget) checks.push({ key: 'spend-total', label: 'All ad spend per 30 days (Google and Meta)', actual: r2((cur.spend + metaSpend) * scale), goal: goals.total_budget, unit: 'money', status: grade('spend', (cur.spend + metaSpend) * scale, goals.total_budget) });
+  if (client.meta_goals?.monthly_spend && md) checks.push({ key: 'spend-meta', label: 'Meta spend per 30 days', actual: r2(metaSpend * scale), goal: client.meta_goals.monthly_spend, unit: 'money', status: grade('spend', metaSpend * scale, client.meta_goals.monthly_spend) });
+  if (goals.monthly_spend) checks.push({ key: 'spend', label: (md ? 'Google spend' : 'Spend') + ' per 30 days', actual: r2(cur.spend * scale), goal: goals.monthly_spend, unit: 'money', status: grade('spend', cur.spend * scale, goals.monthly_spend) });
   for (const s of goals.spend_by_type) {
     const act = s.types.reduce((a, t) => a + (byType[t] || 0), 0) * scale;
     checks.push({ key: 'spend-' + s.types.join('+'), label: s.types.map((t) => TYPE_LBL[t]).join(' + ') + ' spend per 30 days', actual: r2(act), goal: s.amount, unit: 'money', status: grade('spend', act, s.amount) });
@@ -86,8 +109,8 @@ export function summarize(client, rawPayload, savedAt, scopeIn = 'default') {
     .filter((c) => c.spend > 0).sort((a, b) => b.spend - a.spend);
 
   return {
-    token: client.token, name: client.name, customer_id: client.customer_id,
-    report_url: '/' + client.token, ads_url: adsLink(client),
+    token: client.token, name: client.name, customer_id: onlyMeta ? client.meta_ad_account : client.customer_id, platform: onlyMeta ? 'meta' : md ? 'both' : 'google', meta: metaRow,
+    report_url: '/' + client.token, ads_url: onlyMeta ? metaAdsLink(client) : adsLink(client),
     updated: meta.refreshed_at || (savedAt ? new Date(savedAt).toISOString() : null),
     range: meta.range, label,
     spend: r2(cur.spend), results: r2(cur.res), cpa: cpa == null ? null : r2(cpa),
@@ -103,16 +126,24 @@ export function summarize(client, rawPayload, savedAt, scopeIn = 'default') {
 
 export function emptyRow(client, why) {
   const g = applyGoals(client).goals;
-  return { token: client.token, name: client.name, customer_id: client.customer_id, report_url: '/' + client.token, ads_url: adsLink(client), missing: true, why, has_goals: g.any, checks: [], overall: 'nodata', flags: setupFlags(client, g, []) };
+  const om = metaOnly(client);
+  return { token: client.token, name: client.name, customer_id: om ? client.meta_ad_account : client.customer_id, platform: om ? 'meta' : 'google', report_url: '/' + client.token, ads_url: om ? metaAdsLink(client) : adsLink(client), missing: true, why, has_goals: g.any, checks: [], overall: 'nodata', flags: setupFlags(client, g, []) };
 }
 
 // What is missing from a client's setup, in plain words.
 export function setupFlags(client, goals, missingNames) {
   const f = [];
+  if (metaOnly(client)) {
+    const mg = client.meta_goals || {};
+    if (!mg.cost_per_result) f.push('No Meta cost goal');
+    if (!(mg.focus || []).length) f.push('No Meta results picked');
+    if (!mg.monthly_spend && !goals.total_budget) f.push('No budget');
+    return f;
+  }
   const hasOutcomes = Object.values(client.outcomes || {}).some((v) => Array.isArray(v) && v.length);
   if (!goals.cost_per_conversion) f.push('No cost goal');
   if (!goals.focus_conversions.length && !hasOutcomes) f.push('No main conversions picked');
-  if (!goals.monthly_spend && !goals.spend_by_type.length) f.push('No budget');
+  if (!goals.monthly_spend && !goals.total_budget && !goals.spend_by_type.length && !client.meta_goals?.monthly_spend) f.push('No budget');
   if (missingNames && missingNames.length) f.push(missingNames.length === 1 ? 'A conversion name was not found' : missingNames.length + ' conversion names not found');
   return f;
 }

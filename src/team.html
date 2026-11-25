@@ -129,7 +129,7 @@
     }
     return '<div class="det">' + out + '</div>';
   }
-  function links(r, short) { return '<a class="mbtn" href="' + esc(r.report_url) + '" target="_blank" rel="noopener">Report</a><a class="obtn" href="' + esc(r.ads_url) + '" target="_blank" rel="noopener">Google Ads</a><a class="obtn" href="/profile?c=' + encodeURIComponent(r.token) + '">Profile</a>' + (short ? '' : '<a class="obtn" href="/admin#' + esc(r.token) + '">Goals</a>'); }
+  function links(r, short) { return '<a class="mbtn" href="' + esc(r.report_url) + '" target="_blank" rel="noopener">Report</a><a class="obtn" href="' + esc(r.ads_url) + '" target="_blank" rel="noopener">' + (r.platform === 'meta' ? 'Meta Ads' : 'Google Ads') + '</a>' + (r.meta && r.meta.ads_url ? '<a class="obtn" href="' + esc(r.meta.ads_url) + '" target="_blank" rel="noopener">Meta Ads</a>' : '') + '<a class="obtn" href="/profile?c=' + encodeURIComponent(r.token) + '">Profile</a>' + (short ? '' : '<a class="obtn" href="/admin#' + esc(r.token) + '">Goals</a>'); }
   var HW = { red: 'At risk', amber: 'Keep an eye', green: 'Healthy' };
   function health(r, small) {
     var h = r.health; if (!h) return '';
@@ -144,21 +144,31 @@
   function shownAlerts(r) { var sb = /spend/i.test(r.reason || ''); return (r.alerts || []).filter(function (a) { return !(sb && a.kind === 'overspend'); }); }
   function risky(r) { return r.health && (r.health.level === 'red' || r.health.level === 'amber'); }
   function upd(r) { return r.updated ? new Date(r.updated).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''; }
+  // which platforms a client runs, and Meta's own numbers (never added into Google's)
+  function platTag(r) { return r.platform === 'meta' ? '<span class="ptag pm">Meta only</span>' : r.platform === 'both' ? '<span class="ptag pg">Google</span><span class="ptag pm">Meta</span>' : ''; }
+  function metaLine(r, compact) {
+    var m = r.meta; if (!m) return '';
+    if (m.error) return '<p class="mline err"><b>Meta</b> ' + esc(m.error) + '</p>';
+    var one = String(m.label || 'result').toLowerCase().replace(/ies$/, 'y').replace(/s$/, '');
+    var gk = m.status && m.status !== 'none' ? 'st-' + m.status : '';
+    return '<p class="mline"><b>Meta</b> ' + money(m.spend) + (compact ? '' : ' ' + chg(m.spend, m.prev.spend)) + ' · ' + int(m.results) + ' ' + esc(String(m.label).toLowerCase()) + ' · <b class="' + gk + '">' + money2(m.cpa) + '</b> per ' + esc(one) + (m.goal ? ' <span class="mut">(goal ' + money2(m.goal) + ')</span>' : '') + (m.cpa && m.prev.cpa ? ' ' + chg(m.cpa, m.prev.cpa, true) : '') + (!compact && m.frequency > 4 ? ' · <span class="altxt warn">seen ' + m.frequency.toFixed(1) + 'x each</span>' : '') + '</p>';
+  }
   function card(r) {
     if (r.missing) {
-      return '<article class="panel crow miss"><div class="ctop"><div><h2>' + esc(r.name) + '</h2><p class="sub">' + esc(r.customer_id) + ' · ' + esc(r.why) + '</p></div><span class="pill early">' + (r.loading ? 'Loading' : 'No data yet') + '</span></div>' + flagsHtml(r) + '<p class="msg small grow1">' + (r.loading ? 'Gathering this client\'s numbers from Google.' : 'Press Load now, or it fills in after the next 10 am refresh.') + '</p><div class="cbtns">' + (r.loading ? '' : '<button type="button" class="mbtn" data-load="' + esc(r.token) + '">Load now</button>') + links(r) + '</div></article>';
+      return '<article class="panel crow miss"><div class="ctop"><div><h2>' + esc(r.name) + '</h2><p class="sub">' + platTag(r) + esc(r.customer_id) + ' · ' + esc(r.why) + '</p></div><span class="pill early">' + (r.loading ? 'Loading' : 'No data yet') + '</span></div>' + flagsHtml(r) + '<p class="msg small grow1">' + (r.loading ? 'Gathering this client\'s numbers from Google.' : 'Press Load now, or it fills in after the next 10 am refresh.') + '</p><div class="cbtns">' + (r.loading ? '' : '<button type="button" class="mbtn" data-load="' + esc(r.token) + '">Load now</button>') + links(r) + '</div></article>';
     }
-    var head = '<div class="ctop"><div><h2>' + esc(r.name) + '</h2><p class="sub">' + esc(r.customer_id) + (upd(r) ? ' · updated ' + esc(upd(r)) : '') + (r.mixed ? ' · <b class="scopetag">' + (r.scope === 'vpm' ? 'VPM campaigns only' : r.scope === 'other' ? 'Not VPM campaigns' : 'All campaigns') + '</b>' : '') + '</p>' + health(r) + '</div><span class="pill big ' + pcls(r.overall) + '">' + WORD[r.overall] + '</span></div>';
+    var head = '<div class="ctop"><div><h2>' + esc(r.name) + '</h2><p class="sub">' + platTag(r) + esc(r.customer_id) + (upd(r) ? ' · updated ' + esc(upd(r)) : '') + (r.mixed ? ' · <b class="scopetag">' + (r.scope === 'vpm' ? 'VPM campaigns only' : r.scope === 'other' ? 'Not VPM campaigns' : 'All campaigns') + '</b>' : '') + '</p>' + health(r) + '</div><span class="pill big ' + pcls(r.overall) + '">' + WORD[r.overall] + '</span></div>';
     // Cost each carries its own goal, so it is not repeated in the goal checks below.
     var cc = r.checks.filter(function (c) { return c.key === 'cpa'; })[0];
     var costTile = '<div class="' + (cc && cc.status !== 'none' ? 'st-' + cc.status : '') + '"><span>Cost each</span><b>' + money2(r.cpa) + '</b>' + (cc ? '<em class="gl">goal ' + goalTxt(cc) + '</em>' : (r.cpa && r.prev.cpa ? chg(r.cpa, r.prev.cpa, true) : '')) + '</div>';
     var nums = '<div class="nums"><div><span>Spend</span><b>' + money(r.spend) + '</b>' + chg(r.spend, r.prev.spend) + '</div><div><span>' + esc(r.label) + '</span><b>' + int(r.results) + '</b>' + chg(r.results, r.prev.results) + '</div>' + costTile + '</div>';
-    var rest = r.checks.filter(function (c) { return c.key !== 'cpa'; });
+    var rest = r.checks.filter(function (c) { return c.key !== 'cpa' && c.key !== 'cpa-meta'; });
     var reason = r.reason ? '<p class="reason ' + r.overall + '">' + esc(r.reason) + '</p>' : '';
     var checks = rest.length ? '<div class="checks">' + rest.map(check).join('') + '</div>' : (r.checks.length ? '' : '<p class="msg small">No goals yet. <a href="/admin#' + esc(r.token) + '">Add goals</a> to see how this client lines up.</p>');
     var cal = shownAlerts(r);
     var al = cal.length ? '<ul class="calerts">' + cal.map(function (a) { return '<li class="' + a.level + '">' + esc(a.text) + '</li>'; }).join('') + '</ul>' : '';
-    return '<article class="panel crow">' + head + reason + al + nums + wowLine(r) + checks + flagsHtml(r) + '<div class="cbtns">' + links(r, 1) + '<button type="button" class="obtn" data-open="' + esc(r.token) + '">Details</button></div></article>';
+    if (r.meta && !r.meta.error) nums = nums.replace('<div class="nums">', '<p class="plabel">Google Ads</p><div class="nums">');
+    return '<article class="panel crow">' + head + reason + al + nums + wowLine(r) + metaLine(r) + checks + flagsHtml(r) + '<div class="cbtns">' + links(r, 1) + '<button type="button" class="obtn" data-open="' + esc(r.token) + '">Details</button></div></article>';
   }
   function cell(r, keys) {
     var cs = r.checks.filter(function (c) { return keys.some(function (k) { return c.key === k || c.key.indexOf(k + '-') === 0; }); });
@@ -169,7 +179,7 @@
     var h = '<div class="panel tpanel"><div class="tw"><table class="t tt"><thead><tr>' + ['Client', 'Status', 'Spend', 'Results', 'Cost each', 'Last 7 days vs week before', 'Cost goal', 'Spend goal (per 30 days)', 'Volume goal', ''].map(function (x, i) { return '<th class="' + (i >= 2 && i <= 4 ? 'n' : '') + '"><button>' + x + '</button></th>'; }).join('') + '</tr></thead><tbody>';
     h += rows.map(function (r) {
       if (r.missing) return '<tr><td class="nm"><a href="' + esc(r.report_url) + '" target="_blank" rel="noopener"><b>' + esc(r.name) + '</b></a></td><td><span class="pill early">' + (r.loading ? 'Loading' : 'No data yet') + '</span>' + (r.flags && r.flags.length ? '<br><small class="flagtxt">' + esc(r.flags.join(', ')) + '</small>' : '') + '</td><td colspan="7" class="mut">' + esc(r.why) + '</td><td class="tl"><div>' + (r.loading ? '' : '<button type="button" class="obtn sm" data-load="' + esc(r.token) + '">Load</button>') + '</div></td></tr>';
-      return '<tr><td class="nm"><a href="' + esc(r.report_url) + '" target="_blank" rel="noopener"><b>' + esc(r.name) + '</b></a><br><span class="tag">' + esc(r.label) + (r.mixed ? ' · ' + (r.scope === 'vpm' ? 'VPM only' : r.scope === 'other' ? 'Not VPM' : 'All campaigns') : '') + '</span>' + (upd(r) ? '<br><small class="mut">updated ' + esc(upd(r)) + '</small>' : '') + '</td>' +
+      return '<tr><td class="nm"><a href="' + esc(r.report_url) + '" target="_blank" rel="noopener"><b>' + esc(r.name) + '</b></a><br>' + platTag(r) + '<span class="tag">' + esc(r.label) + (r.mixed ? ' · ' + (r.scope === 'vpm' ? 'VPM only' : r.scope === 'other' ? 'Not VPM' : 'All campaigns') : '') + '</span>' + (upd(r) ? '<br><small class="mut">updated ' + esc(upd(r)) + '</small>' : '') + metaLine(r, 1) + '</td>' +
         '<td><span class="pill ' + pcls(r.overall) + '">' + WORD[r.overall] + '</span>' + (r.health ? '<br>' + health(r, 1) : '') + shownAlerts(r).map(function (a) { return '<br><small class="altxt ' + a.level + '">' + esc(a.text) + '</small>'; }).join('') + (r.reason ? '<br><small class="mut">' + esc(r.reason) + '</small>' : '') + (r.flags && r.flags.length ? '<br><small class="flagtxt">' + esc(r.flags.join(', ')) + '</small>' : '') + '</td>' +
         '<td class="n">' + money(r.spend) + '<br>' + chg(r.spend, r.prev.spend) + '</td>' +
         '<td class="n">' + int(r.results) + '<br>' + chg(r.results, r.prev.results) + '</td>' +
@@ -179,12 +189,12 @@
         '<td class="tl"><div><button type="button" class="obtn sm" data-open="' + esc(r.token) + '">Details</button><a class="obtn sm" href="' + esc(r.ads_url) + '" target="_blank" rel="noopener">Ads</a><a class="obtn sm" href="/admin#' + esc(r.token) + '">Goals</a></div></td></tr>';
     }).join('');
     var T = totals(rows);
-    h += '</tbody><tfoot><tr><td class="nm"><b>Total, ' + rows.length + ' client' + (rows.length === 1 ? '' : 's') + '</b></td><td><small>' + T.good + ' on goal, ' + T.warn + ' near, ' + T.bad + ' off</small></td><td class="n"><b>' + money(T.spend) + '</b></td><td class="n"><b>' + int(T.results) + '</b></td><td class="n"><b>' + money2(T.results ? T.spend / T.results : null) + '</b></td><td colspan="5"><small class="mut">Results add up each client\'s main result, so they mix calls, leads and other kinds.</small></td></tr></tfoot>';
+    h += '</tbody><tfoot><tr><td class="nm"><b>Total, ' + rows.length + ' client' + (rows.length === 1 ? '' : 's') + '</b></td><td><small>' + T.good + ' on goal, ' + T.warn + ' near, ' + T.bad + ' off</small></td><td class="n"><b>' + money(T.spend) + '</b></td><td class="n"><b>' + int(T.results) + '</b></td><td class="n"><b>' + money2(T.results ? T.spend / T.results : null) + '</b></td><td colspan="5"><small class="mut">Results add up each client\'s main result, so they mix calls, leads and other kinds.' + (T.mspend ? ' Meta for clients who run both: ' + money(T.mspend) + ' spend, ' + int(T.mres) + ' results, counted separately.' : '') + '</small></td></tr></tfoot>';
     return h + '</table></div></div>';
   }
   function totals(rows) {
-    var t = { spend: 0, results: 0, good: 0, warn: 0, bad: 0 };
-    rows.forEach(function (r) { if (r.missing) return; t.spend += r.spend || 0; t.results += r.results || 0; if (t[r.overall] != null) t[r.overall]++; });
+    var t = { spend: 0, results: 0, good: 0, warn: 0, bad: 0, mspend: 0, mres: 0 };
+    rows.forEach(function (r) { if (r.missing) return; if (r.meta && !r.meta.error) { t.mspend += r.meta.spend || 0; t.mres += r.meta.results || 0; } t.spend += r.spend || 0; t.results += r.results || 0; if (t[r.overall] != null) t[r.overall]++; });
     return t;
   }
   // Details open in a popup so every card in the grid stays the same size.
@@ -203,7 +213,8 @@
     rows.forEach(function (r) { n[r.overall]++; spend += r.spend || 0; if (!rng && r.range) rng = r.range; });
     $('tsub').textContent = (rng ? dlab(rng.from) + ' to ' + dlab(rng.to) + '. ' : '') + 'Checked against each client\'s goals. Monthly goals are compared with the pace per 30 days.';
     var T = totals(rows), nRisk = rows.filter(risky).length, hasHealth = rows.some(function (r) { return r.health; });
-    $('sum').innerHTML = '<div class="kpi"><div class="l">Total ad spend</div><div class="v">' + money(spend) + '</div><div class="ksub">' + int(T.results) + ' results in total</div></div>' +
+    var gSp = 0, mSp = T.mspend; rows.forEach(function (r) { if (r.missing) return; if (r.platform === 'meta') mSp += r.spend || 0; else gSp += r.spend || 0; });
+    $('sum').innerHTML = '<div class="kpi"><div class="l">Total ad spend</div><div class="v">' + money(gSp + mSp) + '</div><div class="ksub">' + (mSp ? 'Google ' + money(gSp) + ' · Meta ' + money(mSp) : int(T.results) + ' results in total') + '</div></div>' +
       ['bad', 'warn', 'good', 'nogoals', 'nodata'].map(function (k) { return '<button type="button" class="kpi sk ' + k + (FILT === k ? ' on' : '') + '" data-f="' + k + '" aria-pressed="' + (FILT === k) + '"><div class="l">' + WORD[k] + '</div><div class="v">' + n[k] + '</div></button>'; }).join('') +
       (hasHealth ? '<button type="button" class="kpi sk risk' + (FILT === 'risk' ? ' on' : '') + '" data-f="risk" aria-pressed="' + (FILT === 'risk') + '" title="Health amber or red: results vs goal, spend pacing, overdue invoices and tenure"><div class="l">At risk</div><div class="v">' + nRisk + '</div></button>' : '');
     // Alerts: everything that needs a look today, worst first.

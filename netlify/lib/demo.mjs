@@ -1,6 +1,6 @@
 // Synthetic report data in exactly the same shape the live Google Ads builder returns.
 // Used for ?k=demo and ?k=demo-calls so the page can be previewed before any credentials exist.
-import { addDays, daysBetween, DATA_VERSION } from './ads.mjs';
+import { addDays, daysBetween, DATA_VERSION, metaAsReport } from './ads.mjs';
 import { demoMeta } from './meta.mjs';
 
 function rnd(seed) {
@@ -131,6 +131,11 @@ function datedVideos(items, from, to) {
   return items;
 }
 export function demoReport(token, from, to) {
+  if (token === 'demo-meta') {
+    const m = demoMeta(from, to, 11);
+    const r = metaAsReport(m, { name: 'Sample Meta Client', notes: [{ title: 'A note from your VPM team', body: 'This is sample data for a client who only runs Meta ads.' }] }, { any: false }, from, to);
+    r.meta.demo = true; return r;
+  }
   const mode = token === 'demo-calls' ? 'calls' : 'full';
   const len = daysBetween(from, to) + 1;
   const pfrom = addDays(from, -len);
